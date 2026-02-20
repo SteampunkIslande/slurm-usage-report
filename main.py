@@ -4,6 +4,10 @@ from pathlib import Path
 import sys
 import argparse
 
+from collections.abc import Callable
+
+from colnames import INTERESTING_COLUMNS
+
 
 # Première étape: rendre le fichier d'accounting sain
 def sacct_sanitizer(
@@ -41,7 +45,7 @@ def add_slurm_jobinfo_type_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
     # extraire les parties du JobID
     parts = (
         pl.col("JobID")
-        .str.extract_groups(r"^(?<JobRoot>\d+)\.(?<_JobSuffix>.+)")
+        .str.extract_groups(r"^(?<JobRoot>\d+)(?<_JobSuffix>\..+)?")
         .struct.unnest()
     )
 
@@ -50,12 +54,12 @@ def add_slurm_jobinfo_type_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
         .with_columns(
             pl.when(pl.col("_JobSuffix").is_null())
             .then(pl.lit("allocation"))
-            .when(pl.col("_JobSuffix") == "batch")
+            .when(pl.col("_JobSuffix") == ".batch")
             .then(pl.lit("batch"))
-            .when(pl.col("_JobSuffix") == "extern")
+            .when(pl.col("_JobSuffix") == ".extern")
             .then(pl.lit("extern"))
             # suffixe numérique → step srun
-            .when(pl.col("_JobSuffix").str.contains(r"^\d+$"))
+            .when(pl.col("_JobSuffix").str.contains(r"^\.\d+$"))
             .then(pl.lit("step"))
             .otherwise(pl.lit("unknown"))
             .alias("JobInfoType"),
@@ -68,7 +72,6 @@ def add_slurm_jobinfo_type_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
 def add_units_kmg(lf: pl.LazyFrame, colname: str) -> pl.LazyFrame:
     return lf.with_columns(
         pl.col(colname)
-        .str.tail(1)
         .str.extract_groups(rf"(?i)(?<{colname}>\d+)(?<{colname}_unit>[kmgt])")
         .struct.unnest()
     )
@@ -95,72 +98,56 @@ def col_to_gigabytes(
     lf: pl.LazyFrame, colname: str, keep_original=False
 ) -> pl.LazyFrame:
     return lf.with_columns(
-        (pl.col(colname) * 2**30).alias(f"{colname}_G" if keep_original else colname)
+        (pl.col(colname) / 2**30).alias(f"{colname}_G" if keep_original else colname)
     )
 
 
-def stats_job_aggregate_cols(
+def smart_aggregate(
     lf: pl.LazyFrame,
-    allocation_constant_cols: list[str],
-    allocation_variable_cols: list[str],
+    group_col: str,
+    behavior: dict[str, Callable[[str], pl.Expr]] = None,
 ) -> pl.LazyFrame:
-    return lf.group_by("JobRoot").agg(
-        [
-            *[
-                pl.col(col)
-                .filter(pl.col("JobInfoType") != "allocation")
-                .max()
-                .alias(col)
-                for col in allocation_variable_cols
-            ],
-            *[
-                pl.col(col)
-                .filter(pl.col("JobInfoType") == "allocation")
-                .first()
-                .alias(col)
-                for col in allocation_constant_cols
-            ],
-        ]
-    )
+    """
+    Agrège un LazyFrame en utilisant `group_col` comme clé de groupement.
+    Pour chaque colonne, applique une fonction d'agrégation basée sur son type:
+    - Int64 ou Float64: max
+    - String: first non-null value
+    Le paramètre `behavior` permet de spécifier une fonction d'agrégation personnalisée pour certaines colonnes,
+    en fournissant un dictionnaire où les clés sont les noms de colonnes et les valeurs sont des fonctions
+    prenant le nom de la colonne et retournant une expression d'agrégation Polars.
+
+    Args:
+        `lf`: le LazyFrame à agréger
+        `group_col`: le nom de la colonne à utiliser pour le groupement
+        `behavior`: un dictionnaire optionnel spécifiant des fonctions d'agrégation personnalisées pour certaines colonnes
+    Returns:
+        Un LazyFrame agrégé selon les règles définies ci-dessus.
+    """
+
+    default_behavior = lambda col_name, col_type: {
+        pl.Int64: pl.col(col_name).max().alias(col_name),
+        pl.Float64: pl.col(col_name).max().alias(col_name),
+        pl.String: pl.col(col_name).drop_nulls().first().alias(col_name),
+    }[col_type]
+
+    aggregations = [
+        (
+            behavior[col_name](col_name)
+            if behavior and col_name in behavior
+            else default_behavior(col_name, col_type)
+        )
+        for col_name, col_type in lf.collect_schema().items()
+        if col_name != group_col
+    ]
+
+    return lf.group_by(group_col).agg(aggregations)
 
 
-def aggregate_per_alloc(lf: pl.LazyFrame) -> pl.LazyFrame:
-    return stats_job_aggregate_cols(
+def aggregate_per_alloc(lf: pl.LazyFrame, group_col="JobRoot") -> pl.LazyFrame:
+
+    return smart_aggregate(
         lf,
-        ["ReqCPUS", "ReqMem", "ReqNodes"],
-        [
-            "Account",
-            "AllocCPUS",
-            "Comment",
-            "CPUTime",
-            "CPUTimeRAW",
-            "DerivedExitCode",
-            "Elapsed",
-            "ElapsedRaw",
-            "End",
-            "ExitCode",
-            "Group",
-            "JobID",
-            "JobName",
-            "MaxDiskRead",
-            "MaxDiskWrite",
-            "MaxRSS",
-            "MaxVMSize",
-            "QOS",
-            "Start",
-            "State",
-            "Submit",
-            "SubmitLine",
-            "Suspended",
-            "SystemCPU",
-            "Timelimit",
-            "TimelimitRaw",
-            "TotalCPU",
-            "User",
-            "UserCPU",
-            "WorkDir",
-            "JobInfoType",
-        ],
+        group_col,
     )
 
 
@@ -171,11 +158,12 @@ def generic_report(lf: pl.LazyFrame) -> pl.LazyFrame:
     Un simple rapport qui, à partir d'un lazyframe, résume les ressources utilisées
     Répond à la question: pour chaque job, combien de pourcent de ce qui avait été demandé a réellement été utilisé
     """
+
+    # Donne plus de sens aux cellules vides
+    # lf = replace_empty_string_with_null(lf)
     # Ajouter les colonnes JobRoot et JobInfoType (utile pour la suite)
     lf = add_slurm_jobinfo_type_columns(lf)
     # Aggrège les métriques
-    lf = aggregate_per_alloc(lf)
-    print(lf.select(["JobRoot", "JobInfoType"]).head().collect())
 
     lf = add_units_kmg(lf, "MaxRSS")
     lf = convert_kmg_col(lf, "MaxRSS")
@@ -185,6 +173,8 @@ def generic_report(lf: pl.LazyFrame) -> pl.LazyFrame:
     lf = convert_kmg_col(lf, "ReqMem")
     lf = col_to_gigabytes(lf, "ReqMem", keep_original=True)
 
+    # Attention: tous les champs aggrégés le seront uniquement s'ils sont de type numérique
+    lf = aggregate_per_alloc(lf)
     lf = lf.with_columns(
         pl.col("MaxRSS").truediv(pl.col("ReqMem")).alias("MemEfficiencyRatio")
     )
@@ -204,7 +194,6 @@ def generic_report(lf: pl.LazyFrame) -> pl.LazyFrame:
 #     # Implémentation simple : utiliser JobName_job comme clé de "règle" et fournir stats sur MemEfficiencyPercent
 #     lf = add_slurm_jobinfo_type_columns(lf)
 #     lf = aggregate_per_alloc(lf)
-
 #     lf = add_units_kmg(lf, "MaxRSS")
 #     lf = convert_kmg_col(lf, "MaxRSS")
 #     lf = col_to_gigabytes(lf, "MaxRSS", keep_original=True)
@@ -235,6 +224,16 @@ def generic_report(lf: pl.LazyFrame) -> pl.LazyFrame:
 #     )
 
 #     return agg
+
+
+def parquet_to_excel(parquet_in: Path, excel_out: Path):
+    lf = (
+        pl.scan_parquet(parquet_in)
+        .select(INTERESTING_COLUMNS)
+        .filter(pl.col("JobID").str.starts_with("31986"))
+    )
+    lf = generic_report(lf)
+    lf.collect().write_excel(excel_out)
 
 
 # Enregistre la sortie de SACCT (au format CSV) dans un format plus compact et plus rapide à requêter que CSV
@@ -430,6 +429,17 @@ def build_parser() -> argparse.ArgumentParser:
         "output_excel", type=Path, help="Chemin du fichier Excel de sortie"
     )
 
+    # Simple debug: parquet to excel
+    p_debug = subparsers.add_parser(
+        "debug", help="Générer un Excel directement à partir du parquet"
+    )
+    p_debug.add_argument(
+        "input_parquet", type=Path, help="Chemin du fichier Parquet d'entrée"
+    )
+    p_debug.add_argument(
+        "output_excel", type=Path, help="Chemin du fichier Excel de sortie"
+    )
+
     # # snakemake efficiency
     # p_smk = subparsers.add_parser(
     #     "snakemake_efficiency",
@@ -460,6 +470,9 @@ if __name__ == "__main__":
 
     elif args.command == "ram_usage":
         generate_ram_usage_excel(args.input_parquet, args.output_excel)
+
+    elif args.command == "debug":
+        parquet_to_excel(args.input_parquet, args.output_excel)
 
     # elif args.command == "snakemake_efficiency":
     #     generate_snakemake_efficiency_excel(args.input_parquet, args.output_excel)

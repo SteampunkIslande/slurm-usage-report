@@ -2,6 +2,7 @@ import polars as pl
 
 from pathlib import Path
 import sys
+import argparse
 
 
 # Première étape: rendre le fichier d'accounting sain
@@ -40,7 +41,7 @@ def add_slurm_jobinfo_type_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
     # extraire les parties du JobID
     parts = (
         pl.col("JobID")
-        .str.extract_groups(r"^(?<JobRoot>[^.])\.(?<_JobSuffix>.+)")
+        .str.extract_groups(r"^(?<JobRoot>\d+)\.(?<_JobSuffix>.+)")
         .struct.unnest()
     )
 
@@ -109,15 +110,14 @@ def stats_job_aggregate_cols(
                 pl.col(col)
                 .filter(pl.col("JobInfoType") != "allocation")
                 .max()
-                .alias(f"{col}_job")
+                .alias(col)
                 for col in allocation_variable_cols
             ],
             *[
                 pl.col(col)
                 .filter(pl.col("JobInfoType") == "allocation")
-                .filter(pl.col(col).is_not_null())
                 .first()
-                .alias(f"{col}_alloc")
+                .alias(col)
                 for col in allocation_constant_cols
             ],
         ]
@@ -159,6 +159,7 @@ def aggregate_per_alloc(lf: pl.LazyFrame) -> pl.LazyFrame:
             "User",
             "UserCPU",
             "WorkDir",
+            "JobInfoType",
         ],
     )
 
@@ -174,6 +175,7 @@ def generic_report(lf: pl.LazyFrame) -> pl.LazyFrame:
     lf = add_slurm_jobinfo_type_columns(lf)
     # Aggrège les métriques
     lf = aggregate_per_alloc(lf)
+    print(lf.select(["JobRoot", "JobInfoType"]).head().collect())
 
     lf = add_units_kmg(lf, "MaxRSS")
     lf = convert_kmg_col(lf, "MaxRSS")
@@ -190,26 +192,49 @@ def generic_report(lf: pl.LazyFrame) -> pl.LazyFrame:
         pl.col("MemEfficiencyRatio").mul(100).alias("MemEfficiencyPercent")
     )
 
-
-# A appeler depuis une fonction qui a pris un parquet en entrée, pour une seule exécution de snakemake
-def snakemake_efficiency_report(lf: pl.LazyFrame) -> pl.LazyFrame:
-    """
-    Un rapport spécifique à un pipeline snakemake.
-    Répond à la question: pour chaque règle snakemake, quelles sont les moyennes, minimum, maximum, médianes de chaque métrique (déjà aggrégée ou non)
-    """
-    pass
+    return lf
 
 
-# def generate_html_report(
-#     sacct_parquet_files: list[Path],
-#     output_html_report: Path,
-# ):
+# # A appeler depuis une fonction qui a pris un parquet en entrée, pour une seule exécution de snakemake
+# def snakemake_efficiency_report(lf: pl.LazyFrame) -> pl.LazyFrame:
 #     """
-#     A partir d'un ou plusieurs fichiers parquet, génère un rapport quotidien, hebdomadaire, mensuel ou annuel.
-#     On y trouve un calendrier qui indique pour chaque journée le taux d'occupation réelle du cluster (somme des temps écoulé * MaxRSS)/(somme des temps écoulés * ReqMem)
+#     Un rapport spécifique à un pipeline snakemake.
+#     Répond à la question: pour chaque règle snakemake, quelles sont les moyennes, minimum, maximum, médianes de chaque métrique (déjà aggrégée ou non)
 #     """
+#     # Implémentation simple : utiliser JobName_job comme clé de "règle" et fournir stats sur MemEfficiencyPercent
+#     lf = add_slurm_jobinfo_type_columns(lf)
+#     lf = aggregate_per_alloc(lf)
 
-#     lf = pl.scan_parquet(sacct_parquet_files)
+#     lf = add_units_kmg(lf, "MaxRSS")
+#     lf = convert_kmg_col(lf, "MaxRSS")
+#     lf = col_to_gigabytes(lf, "MaxRSS", keep_original=True)
+
+#     lf = add_units_kmg(lf, "ReqMem")
+#     lf = convert_kmg_col(lf, "ReqMem")
+#     lf = col_to_gigabytes(lf, "ReqMem", keep_original=True)
+
+#     lf = lf.with_columns(
+#         pl.col("MaxRSS")
+#         .truediv(pl.col("ReqMem"))
+#         .mul(100)
+#         .alias("MemEfficiencyPercent")
+#     )
+
+#     # Agréger par JobName_job (nom de job issu des lignes non-allocation)
+#     # Si la colonne JobName_job n'existe pas, fallback vers JobName_alloc ou JobName
+#     key = "JobName_job"
+#     # construire aggregation
+#     agg = lf.group_by(key).agg(
+#         [
+#             pl.col("MemEfficiencyPercent").mean().alias("MemEff_mean"),
+#             pl.col("MemEfficiencyPercent").min().alias("MemEff_min"),
+#             pl.col("MemEfficiencyPercent").max().alias("MemEff_max"),
+#             pl.col("MemEfficiencyPercent").median().alias("MemEff_median"),
+#             pl.count().alias("n_jobs"),
+#         ]
+#     )
+
+#     return agg
 
 
 # Enregistre la sortie de SACCT (au format CSV) dans un format plus compact et plus rapide à requêter que CSV
@@ -347,3 +372,97 @@ def save_to_parquet(
         },
         quote_char=None,
     ).sink_parquet(parquet_out)
+
+
+# Fonctions utilitaires CLI
+def generate_ram_usage_excel(input_parquet: Path, output_excel: Path):
+    lf = pl.scan_parquet(input_parquet)
+    lf = generic_report(lf)
+    lf.collect().write_excel(output_excel)
+
+
+# def generate_snakemake_efficiency_excel(input_parquet: Path, output_excel: Path):
+#     lf = pl.scan_parquet(input_parquet)
+#     agg = snakemake_efficiency_report(lf)
+#     df = agg.collect().to_pandas()
+#     df.to_excel(output_excel, index=False)
+
+
+# CLI
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Outils de traitement des fichiers SLURM"
+    )
+    subparsers = parser.add_subparsers(dest="command")
+
+    # csv -> parquet
+    p_csv = subparsers.add_parser(
+        "csv_to_parquet", help="Convertir un fichier CSV en Parquet"
+    )
+    p_csv.add_argument("input_csv", type=Path, help="Chemin du fichier CSV d'entrée")
+    p_csv.add_argument(
+        "output_parquet", type=Path, help="Chemin du fichier Parquet de sortie"
+    )
+    p_csv.add_argument(
+        "--verbose", action="store_true", help="Afficher les informations détaillées"
+    )
+    p_csv.add_argument(
+        "--col-count",
+        type=int,
+        default=109,
+        help="Nombre attendu de colonnes dans le CSV (par défaut: 109)",
+    )
+    p_csv.add_argument(
+        "--separator",
+        type=str,
+        default="|",
+        help="Séparateur utilisé dans le CSV (par défaut: |)",
+    )
+
+    # ram usage report
+    p_ram = subparsers.add_parser(
+        "ram_usage", help="Générer un Excel avec le taux d'utilisation de la RAM"
+    )
+    p_ram.add_argument(
+        "input_parquet", type=Path, help="Chemin du fichier Parquet d'entrée"
+    )
+    p_ram.add_argument(
+        "output_excel", type=Path, help="Chemin du fichier Excel de sortie"
+    )
+
+    # # snakemake efficiency
+    # p_smk = subparsers.add_parser(
+    #     "snakemake_efficiency",
+    #     help="Générer un Excel d'efficacité spécifique à Snakemake",
+    # )
+    # p_smk.add_argument(
+    #     "input_parquet", type=Path, help="Chemin du fichier Parquet d'entrée"
+    # )
+    # p_smk.add_argument(
+    #     "output_excel", type=Path, help="Chemin du fichier Excel de sortie"
+    # )
+
+    return parser
+
+
+if __name__ == "__main__":
+    parser = build_parser()
+    args = parser.parse_args()
+
+    if args.command == "csv_to_parquet":
+        save_to_parquet(
+            args.input_csv,
+            args.output_parquet,
+            verbose=args.verbose,
+            col_count=args.col_count,
+            separator=args.separator,
+        )
+
+    elif args.command == "ram_usage":
+        generate_ram_usage_excel(args.input_parquet, args.output_excel)
+
+    # elif args.command == "snakemake_efficiency":
+    #     generate_snakemake_efficiency_excel(args.input_parquet, args.output_excel)
+
+    else:
+        parser.print_help()

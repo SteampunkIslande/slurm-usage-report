@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Rapport d'efficacité snakemake</title>
+  <style>
+    /* Reset and base */
+    :root {
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --muted: #6b7280;
+      --accent: #0f4c81;
+      --border: #e6edf3;
+      --stripe: #f3f6f9;
+    }
+    html,body { height:100%; }
+    body {
+      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      background: var(--bg);
+      color: #0b1724;
+      margin: 24px;
+      line-height:1.5;
+    }
+    h1 { color: var(--accent); margin-bottom:8px; font-weight:600; }
+    h2 { color: #0b2638; margin-top:20px; font-size:1.1rem; font-weight:600; }
+    p { color: var(--muted); max-width:75ch; }
+
+    /* Table styling: make pandas .dataframe scrollable and elegant */
+    .dataframe {
+      display: block;
+      width: 100%;
+      overflow: auto;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: 0 1px 2px rgba(11,24,36,0.04);
+      margin-top: 12px;
+    }
+    .dataframe table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 600px;
+    }
+    .dataframe thead th {
+      position: sticky;
+      top: 0;
+      background: linear-gradient(180deg,#ffffff,#f7fbff);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 12px;
+      text-align: left;
+      font-weight:600;
+      color: #0b2638;
+      font-size:0.95rem;
+    }
+    .dataframe tbody td {
+      padding: 10px 12px;
+      border-bottom: 1px dashed var(--border);
+      color: #102028;
+      font-size:0.95rem;
+    }
+    .dataframe tbody tr:nth-child(even) td {
+      background: var(--stripe);
+    }
+    .dataframe tfoot td { padding: 8px 12px; font-weight:600; }
+
+    /* Small screens */
+    @media (max-width:640px) {
+      body { margin: 12px; }
+      .dataframe table { min-width: 480px; }
+      .plot { overflow: auto; }
+    }
+
+    /* Plot container spacing */
+    .plot { margin: 8px 0 24px; }
+
+  </style>
+</head>
+<body>
+
+<h1>Rapport d'efficacité snakemake</h1>
+<p>
+Le rapport d'efficacité qui suit mesure le rapport entre la quantité de mémoire vive requise pour chaque règle et ce qui a réellement été utilisé.
+<br>
+Dans le tableau, sont affichées les valeurs minimales, maximales, médianes, et moyennes de ce rapport. Plus celui-ci est proche de 1, plus grande est l'efficacité.
+</p>
+<h2>Table d'efficacité</h2>
+{{ efficiency_table | safe }}
+<h2>Boxplot de l'efficacité mémoire de chaque règle</h2>
+<p class="plot">
+{{ mem_box_plot | safe }}
+</p>
+<h2>Boxplot de la durée d'exécution de chaque règle</h2>
+<p class="plot">
+{{ runtime_box_plot | safe }}
+</p>
+</div>
+</body>
+</html>

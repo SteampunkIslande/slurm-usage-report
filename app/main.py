@@ -450,7 +450,7 @@ def build_parser() -> argparse.ArgumentParser:
     # snakemake efficiency
     p_smk = subparsers.add_parser(
         "snakemake_efficiency",
-        help="Générer un Excel d'efficacité spécifique à Snakemake",
+        help="Générer un rapport HTML d'efficacité spécifique à Snakemake",
     )
     p_smk.set_defaults(func=generate_snakemake_efficiency_report)
     p_smk.add_argument(

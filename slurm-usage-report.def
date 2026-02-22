@@ -1,0 +1,13 @@
+Bootstrap: docker
+From: python:3.10-slim
+
+%files
+    app /app
+    requirements.txt /app/requirements.txt
+
+%post
+    python3 -m pip install -U uv
+    uv pip install --system -r /app/requirements.txt
+
+%test
+    python3 /app/main.py --help

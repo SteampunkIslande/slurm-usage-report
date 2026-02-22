@@ -7,7 +7,6 @@ import sys
 import argparse, argcomplete
 from snakemake_rules_plot import plot_snakemake_rule_efficicency
 
-from collections.abc import Callable
 
 from colnames import INTERESTING_COLUMNS, USEFUL_COLUMNS
 
@@ -105,47 +104,6 @@ def col_to_gigabytes(
     return lf.with_columns(
         (pl.col(colname) / 2**30).alias(f"{colname}_G" if keep_original else colname)
     )
-
-
-def smart_aggregate(
-    lf: pl.LazyFrame,
-    group_col: str,
-    behavior: dict[str, Callable[[str], pl.Expr]] = None,
-) -> pl.LazyFrame:
-    """
-    Agrège un LazyFrame en utilisant `group_col` comme clé de groupement.
-    Pour chaque colonne, applique une fonction d'agrégation basée sur son type:
-    - Int64 ou Float64: max
-    - String: first non-null value
-    Le paramètre `behavior` permet de spécifier une fonction d'agrégation personnalisée pour certaines colonnes,
-    en fournissant un dictionnaire où les clés sont les noms de colonnes et les valeurs sont des fonctions
-    prenant le nom de la colonne et retournant une expression d'agrégation Polars.
-
-    Args:
-        `lf`: le LazyFrame à agréger
-        `group_col`: le nom de la colonne à utiliser pour le groupement
-        `behavior`: un dictionnaire optionnel spécifiant des fonctions d'agrégation personnalisées pour certaines colonnes
-    Returns:
-        Un LazyFrame agrégé selon les règles définies ci-dessus.
-    """
-
-    default_behavior = lambda col_name, col_type: {
-        pl.Int64: pl.col(col_name).max().alias(col_name),
-        pl.Float64: pl.col(col_name).max().alias(col_name),
-        pl.String: pl.col(col_name).drop_nulls().first().alias(col_name),
-    }[col_type]
-
-    aggregations = [
-        (
-            behavior[col_name](col_name)
-            if behavior and col_name in behavior
-            else default_behavior(col_name, col_type)
-        )
-        for col_name, col_type in lf.collect_schema().items()
-        if col_name != group_col
-    ]
-
-    return lf.group_by(group_col).agg(aggregations)
 
 
 def aggregate_per_alloc(lf: pl.LazyFrame, group_col="JobRoot") -> pl.LazyFrame:

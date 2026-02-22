@@ -46,15 +46,12 @@ def add_slurm_jobinfo_type_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
       12345.1      -> step
     """
 
-    # extraire les parties du JobID
-    parts = (
-        pl.col("JobID")
-        .str.extract_groups(r"^(?<JobRoot>\d+)(?<_JobSuffix>\..+)?")
-        .struct.unnest()
-    )
-
     return (
-        lf.with_columns(parts)
+        lf.with_columns(
+            pl.col("JobID")
+            .str.extract_groups(r"^(?<JobRoot>\d+)(?<_JobSuffix>\..+)?")
+            .struct.unnest()
+        )
         .with_columns(
             pl.when(pl.col("_JobSuffix").is_null())
             .then(pl.lit("allocation"))
@@ -76,7 +73,7 @@ def add_slurm_jobinfo_type_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
 def add_units_kmg(lf: pl.LazyFrame, colname: str) -> pl.LazyFrame:
     return lf.with_columns(
         pl.col(colname)
-        .str.extract_groups(rf"(?i)(?<{colname}>\d+)(?<{colname}_unit>[kmgt])")
+        .str.extract_groups(rf"(?<{colname}>\d+)(?<{colname}_unit>[KMGT])")
         .struct.unnest()
     )
 
@@ -134,8 +131,6 @@ def add_snakerule_col(lf: pl.LazyFrame) -> pl.LazyFrame:
 def aggregate_per_snakemake_rule(lf: pl.LazyFrame) -> pl.LazyFrame:
 
     lf = lf.group_by("rule_name").agg(
-        pl.col("MaxRSS_G").drop_nulls().first(),
-        pl.col("ReqMem_G").drop_nulls().first(),
         # Rapport entre MaxRSS et ReqMem par règle
         pl.col("MemEfficiencyPercent").mean().name.suffix("_mean"),
         pl.col("MemEfficiencyPercent").median().name.suffix("_median"),
@@ -193,12 +188,7 @@ def generic_report(lf: pl.LazyFrame) -> pl.LazyFrame:
 
 
 def debug_parquet(input_parquet: Path, output_excel: Path):
-    lf = (
-        pl.scan_parquet(input_parquet)
-        .select(INTERESTING_COLUMNS)
-        .filter(pl.col("JobID").str.starts_with("31986"))
-    )
-    lf = generic_report(lf)
+    lf = pl.scan_parquet(input_parquet).select(INTERESTING_COLUMNS)
     lf.collect().write_excel(output_excel)
 
 
@@ -416,11 +406,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     # generic efficiency report
-    p_ram = subparsers.add_parser(
+    p_generic = subparsers.add_parser(
         "generic", help="Générer un Excel avec le taux d'utilisation de la RAM"
     )
-    p_ram.set_defaults(func=generic_usage_excel)
-    p_ram.add_argument(
+    p_generic.set_defaults(func=generic_usage_excel)
+    p_generic.add_argument(
         "--input",
         "-i",
         type=Path,
@@ -428,7 +418,7 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         dest="input_parquet",
     )
-    p_ram.add_argument(
+    p_generic.add_argument(
         "--output",
         "-o",
         type=Path,
@@ -443,10 +433,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_debug.set_defaults(func=debug_parquet)
     p_debug.add_argument(
-        "input_parquet", type=Path, help="Chemin du fichier Parquet d'entrée"
+        "-i",
+        "--input",
+        dest="input_parquet",
+        type=Path,
+        help="Chemin du fichier Parquet d'entrée",
     )
     p_debug.add_argument(
-        "output_excel", type=Path, help="Chemin du fichier Excel de sortie"
+        "-o",
+        "--output",
+        dest="output_excel",
+        type=Path,
+        help="Chemin du fichier Excel de sortie",
     )
 
     # snakemake efficiency

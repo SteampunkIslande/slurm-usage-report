@@ -55,6 +55,9 @@ if __name__ == "__main__":
                                 subprocess.run(
                                     [
                                         "sacct",
+                                        "-S",
+                                        f"{m.group('year')}-{m.group('month')}-{m.group('day')}",
+                                        "-a",
                                         "--name",
                                         job_id,
                                         "-o",

@@ -194,17 +194,17 @@ def debug_parquet(input_parquet: Path, output_excel: Path):
 
 # Enregistre la sortie de SACCT (au format CSV) dans un format plus compact et plus rapide à requêter que CSV
 def save_to_parquet(
-    sacct_file: Path,
-    parquet_out: Path,
+    input_csv: Path,
+    output_parquet: Path,
     verbose: bool = False,
     col_count: int = 109,
     separator: str = "|",
 ):
-    sacct_file_overwrite = sacct_file.with_suffix(".csv.tmp")
+    sacct_file_overwrite = input_csv.with_suffix(".csv.tmp")
     removed_lines = sacct_sanitizer(
-        sacct_file, sacct_file_overwrite, col_count, separator
+        input_csv, sacct_file_overwrite, col_count, separator
     )
-    sacct_file_overwrite.replace(sacct_file)
+    sacct_file_overwrite.replace(input_csv)
 
     if verbose:
         sys.stderr.write(
@@ -212,7 +212,7 @@ def save_to_parquet(
         )
 
     pl.scan_csv(
-        sacct_file,
+        input_csv,
         separator="|",
         schema_overrides={
             "Account": pl.String,
@@ -326,7 +326,7 @@ def save_to_parquet(
             "WorkDir": pl.String,
         },
         quote_char=None,
-    ).sink_parquet(parquet_out)
+    ).sink_parquet(output_parquet)
 
 
 # Fonctions utilitaires CLI
@@ -385,9 +385,19 @@ def build_parser() -> argparse.ArgumentParser:
         "csv_to_parquet", help="Convertir un fichier CSV en Parquet"
     )
     p_csv.set_defaults(func=save_to_parquet)
-    p_csv.add_argument("input_csv", type=Path, help="Chemin du fichier CSV d'entrée")
     p_csv.add_argument(
-        "output_parquet", type=Path, help="Chemin du fichier Parquet de sortie"
+        "-i",
+        "--input",
+        dest="input_csv",
+        type=Path,
+        help="Chemin du fichier CSV d'entrée",
+    )
+    p_csv.add_argument(
+        "-o",
+        "--output",
+        dest="output_parquet",
+        type=Path,
+        help="Chemin du fichier Parquet de sortie",
     )
     p_csv.add_argument(
         "--verbose", action="store_true", help="Afficher les informations détaillées"

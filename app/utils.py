@@ -209,3 +209,22 @@ INTERESTING_COLUMNS = [
     "UserCPU",
     "WorkDir",
 ]
+
+
+def color_from_threshold_map(value, thresholds):
+    latest_color = thresholds[0][1]  # Default color if value is below all thresholds
+    for threshold, color in thresholds:
+        if value < threshold:
+            return color
+        latest_color = color
+    return latest_color
+
+
+DEFAULT_CMAP = [
+    (20, "#ff0000"),
+    (60, "#d4a500"),
+    (75, "#ffa500"),
+    (100, "#008000"),
+    (125, "#ffa500"),
+    (150, "#ff0000"),
+]

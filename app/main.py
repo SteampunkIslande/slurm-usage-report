@@ -8,7 +8,12 @@ import argparse, argcomplete
 from snakemake_rules_plot import plot_snakemake_rule_efficicency
 
 
-from colnames import INTERESTING_COLUMNS, USEFUL_COLUMNS
+from utils import (
+    INTERESTING_COLUMNS,
+    USEFUL_COLUMNS,
+    color_from_threshold_map,
+    DEFAULT_CMAP,
+)
 
 import jinja2 as j2
 
@@ -335,25 +340,6 @@ def generic_usage_excel(input_parquet: Path, output_excel: Path):
     lf = generic_report(lf)
     lf = lf.select(*[*USEFUL_COLUMNS, "ReqMem_G", "MaxRSS_G", "MemEfficiencyPercent"])
     lf.collect().write_excel(output_excel)
-
-
-def color_from_threshold_map(value, thresholds):
-    latest_color = thresholds[0][1]  # Default color if value is below all thresholds
-    for threshold, color in thresholds:
-        if value < threshold:
-            return color
-        latest_color = color
-    return latest_color
-
-
-DEFAULT_CMAP = [
-    (20, "#ff0000"),
-    (60, "#d4a500"),
-    (75, "#ffa500"),
-    (100, "#008000"),
-    (125, "#ffa500"),
-    (150, "#ff0000"),
-]
 
 
 def generate_snakemake_efficiency_report(

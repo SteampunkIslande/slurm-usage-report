@@ -420,14 +420,14 @@ def generic_usage_excel(input_parquet: Path, output_excel: Path):
 
 
 def generate_snakemake_efficiency_report(
-    input_parquet: Path, output_html: Path, job_name: str = None
+    input_parquet: Path, output_html: Path, job_name: list[str] = None
 ):
     lf = pl.scan_parquet(input_parquet)
     lf = generic_report(lf)
     lf = add_snakerule_col(lf)
 
     if job_name:
-        lf = lf.filter(pl.col("JobName") == job_name)
+        lf = lf.filter(pl.col("JobName").str.contains_any(job_name))
 
     # Filtrer pour obtenir seulement les données avec des noms de règles
     lf = lf.filter(pl.col("rule_name").is_not_null())
@@ -648,7 +648,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Chemin du fichier html de sortie",
     )
     p_smk.add_argument(
-        "--job-name", "-n", dest="job_name", help="Nom du job SLURM à sélectionner"
+        "--job-name",
+        "-n",
+        dest="job_name",
+        help="Nom du(des) job(s) SLURM à sélectionner",
+        type=lambda s: s.split(","),
     )
 
     return parser

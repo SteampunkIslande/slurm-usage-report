@@ -142,6 +142,12 @@ def aggregate_per_snakemake_rule(lf: pl.LazyFrame) -> pl.LazyFrame:
         pl.col("MemEfficiencyPercent").std().name.suffix("_std"),
         pl.col("MemEfficiencyPercent").min().name.suffix("_min"),
         pl.col("MemEfficiencyPercent").max().name.suffix("_max"),
+        # Efficacité CPU par règle
+        pl.col("CPUEfficiencyPercent").mean().name.suffix("_mean"),
+        pl.col("CPUEfficiencyPercent").median().name.suffix("_median"),
+        pl.col("CPUEfficiencyPercent").std().name.suffix("_std"),
+        pl.col("CPUEfficiencyPercent").min().name.suffix("_min"),
+        pl.col("CPUEfficiencyPercent").max().name.suffix("_max"),
         # Durée d'exécution par règle
         pl.col("ElapsedRaw").mean().name.suffix("_mean"),
         pl.col("ElapsedRaw").median().name.suffix("_median"),
@@ -156,6 +162,58 @@ def aggregate_per_snakemake_rule(lf: pl.LazyFrame) -> pl.LazyFrame:
         pl.col("Account").drop_nulls().first(),
         pl.col("NodeList").drop_nulls().first(),
     )
+
+    return lf
+
+
+def parse_total_cpu_col(lf: pl.LazyFrame) -> pl.LazyFrame:
+    # Calcul de l'efficacité CPU: TotalCPU / (ElapsedRaw * AllocCPUS) * 100
+    # TotalCPU est le temps CPU utilisateur en secondes
+    # Formats possibles: HH:MM:SS, MM:SS.ms, JJ-HH:MM:SS
+
+    # Étape 1: Extraire les composants selon le format
+    lf = lf.with_columns(
+        pl.when(pl.col("TotalCPU").str.contains(r"^\d+-\d+:\d+:\d+$"))
+        .then(
+            pl.col("TotalCPU").str.extract_groups(
+                r"(?<days>\d+)-(?<hours>\d+):(?<minutes>\d+):(?<seconds>\d+)"
+            )
+        )
+        .when(pl.col("TotalCPU").str.contains(r"^\d+:\d+:\d+$"))
+        .then(
+            pl.col("TotalCPU").str.extract_groups(
+                r"(?<hours>\d+):(?<minutes>\d+):(?<seconds>\d+)"
+            )
+        )
+        .when(pl.col("TotalCPU").str.contains(r"^\d+:\d+\.\d+$"))
+        .then(pl.col("TotalCPU").str.extract_groups(r"(?<minutes>\d+):(?<seconds>\d+)"))
+        .otherwise(pl.lit(None))
+        .alias("TotalCPU_parsed")
+    )
+
+    # Étape 2: Calculer les secondes à partir des composants
+    lf = lf.with_columns(
+        pl.when(pl.col("TotalCPU_parsed").struct.field("days").is_not_null())
+        .then(
+            pl.col("TotalCPU_parsed").struct.field("days").cast(pl.Int64) * 86400
+            + pl.col("TotalCPU_parsed").struct.field("hours").cast(pl.Int64) * 3600
+            + pl.col("TotalCPU_parsed").struct.field("minutes").cast(pl.Int64) * 60
+            + pl.col("TotalCPU_parsed").struct.field("seconds").cast(pl.Int64)
+        )
+        .when(pl.col("TotalCPU_parsed").struct.field("hours").is_not_null())
+        .then(
+            pl.col("TotalCPU_parsed").struct.field("hours").cast(pl.Int64) * 3600
+            + pl.col("TotalCPU_parsed").struct.field("minutes").cast(pl.Int64) * 60
+            + pl.col("TotalCPU_parsed").struct.field("seconds").cast(pl.Int64)
+        )
+        .when(pl.col("TotalCPU_parsed").struct.field("minutes").is_not_null())
+        .then(
+            pl.col("TotalCPU_parsed").struct.field("minutes").cast(pl.Int64) * 60
+            + pl.col("TotalCPU_parsed").struct.field("seconds").cast(pl.Int64)
+        )
+        .otherwise(pl.lit(None))
+        .alias("TotalCPU_seconds")
+    ).drop("TotalCPU_parsed")
 
     return lf
 
@@ -187,6 +245,17 @@ def generic_report(lf: pl.LazyFrame) -> pl.LazyFrame:
     )
     lf = lf.with_columns(
         pl.col("MemEfficiencyRatio").mul(100).alias("MemEfficiencyPercent")
+    )
+
+    lf = parse_total_cpu_col(lf)
+
+    lf = lf.with_columns(
+        (
+            pl.col("TotalCPU_seconds")
+            .truediv(pl.col("ElapsedRaw") * pl.col("AllocCPUS"))
+            .fill_nan(0)
+            .mul(100)
+        ).alias("CPUEfficiencyPercent")
     )
 
     return lf
@@ -338,7 +407,15 @@ def save_to_parquet(
 def generic_usage_excel(input_parquet: Path, output_excel: Path):
     lf = pl.scan_parquet(input_parquet)
     lf = generic_report(lf)
-    lf = lf.select(*[*USEFUL_COLUMNS, "ReqMem_G", "MaxRSS_G", "MemEfficiencyPercent"])
+    lf = lf.select(
+        *[
+            *USEFUL_COLUMNS,
+            "ReqMem_G",
+            "MaxRSS_G",
+            "MemEfficiencyPercent",
+            "CPUEfficiencyPercent",
+        ]
+    )
     lf.collect().write_excel(output_excel)
 
 
@@ -357,6 +434,7 @@ def generate_snakemake_efficiency_report(
     relaxed_df = lf.collect()
 
     mem_box_plot = plot_snakemake_rule_efficicency(relaxed_df, "MemEfficiencyPercent")
+    cpu_box_plot = plot_snakemake_rule_efficicency(relaxed_df, "CPUEfficiencyPercent")
     runtime_box_plot = plot_snakemake_rule_efficicency(relaxed_df, "ElapsedRaw")
 
     lf = aggregate_per_snakemake_rule(lf)
@@ -381,6 +459,29 @@ def generate_snakemake_efficiency_report(
             pl.col("MemEfficiencyPercent_std").alias("Efficacité mémoire (écart-type)"),
             pl.col("MemEfficiencyPercent_min").alias("Efficacité mémoire minimum"),
             pl.col("MemEfficiencyPercent_max").alias("Efficacité mémoire maximum"),
+        )
+        .to_dict(as_series=False)
+    )
+    efficiency_table_cpu = (
+        lf.select(
+            [
+                "rule_name",
+                "CPUEfficiencyPercent_mean",
+                "CPUEfficiencyPercent_median",
+                "CPUEfficiencyPercent_std",
+                "CPUEfficiencyPercent_min",
+                "CPUEfficiencyPercent_max",
+            ]
+        )
+        .collect()
+        .sort("rule_name")
+        .select(
+            pl.col("rule_name").alias("Nom de la règle"),
+            pl.col("CPUEfficiencyPercent_mean").alias("Efficacité CPU moyenne"),
+            pl.col("CPUEfficiencyPercent_median").alias("Efficacité CPU médiane"),
+            pl.col("CPUEfficiencyPercent_std").alias("Efficacité CPU (écart-type)"),
+            pl.col("CPUEfficiencyPercent_min").alias("Efficacité CPU minimum"),
+            pl.col("CPUEfficiencyPercent_max").alias("Efficacité CPU maximum"),
         )
         .to_dict(as_series=False)
     )
@@ -418,8 +519,10 @@ def generate_snakemake_efficiency_report(
     output = template.render(
         {
             "mem_box_plot": mem_box_plot,
+            "cpu_box_plot": cpu_box_plot,
             "runtime_box_plot": runtime_box_plot,
             "efficiency_table_mem": efficiency_table_mem,
+            "efficiency_table_cpu": efficiency_table_cpu,
             "efficiency_table_runtime": efficiency_table_runtime,
             "color_config": {
                 v: DEFAULT_CMAP
@@ -428,6 +531,10 @@ def generate_snakemake_efficiency_report(
                     "Efficacité mémoire médiane",
                     "Efficacité mémoire minimum",
                     "Efficacité mémoire maximum",
+                    "Efficacité CPU moyenne",
+                    "Efficacité CPU médiane",
+                    "Efficacité CPU minimum",
+                    "Efficacité CPU maximum",
                 ]
             },
         }

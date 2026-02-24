@@ -192,6 +192,22 @@
     {{ mem_box_plot | safe }}
   </p>
 
+  <h2>Efficacité CPU (temps CPU total en secondes / (temps wall clock en secondes * nb CPUs)) * 100 (en %)</h2>
+  <p>
+    La table ci-dessous mesure, pour chaque règle snakemake, le rapport entre le temps CPU total utilisé et le produit
+    du temps wall clock par le nombre de CPUs alloués.
+    <br>
+    Une valeur de 100% signifie que tous les CPUs ont été utilisés à plein temps pendant toute la durée du job.
+    Une valeur inférieure à 100% indique une sous-utilisation des CPUs alloués.
+  </p>
+
+  {{ render_table(efficiency_table_cpu, color_thresholds=color_config) }}
+
+  <h2>Représentation graphique</h2>
+  <p class="plot">
+    {{ cpu_box_plot | safe }}
+  </p>
+
   <h2>Durée d'exécution (en secondes)</h2>
 
   <p>

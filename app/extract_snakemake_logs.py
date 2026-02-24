@@ -32,7 +32,7 @@ def find_project_dir(log_path: Path) -> Path | None:
     if log_path.parent.name != "log" or log_path.parent.parent.name != ".snakemake":
         # Atypique, normalement, ce fichier de log est présent dans ${WORK_DIR}/.snakemake/log
         return None
-    return log_path.parent.parent.absolute().resolve()
+    return log_path.parent.parent.parent.absolute().resolve()
 
 
 def snakemake_log_records_generator(log_path: Path):

@@ -10,4 +10,4 @@ From: python:3.10-slim
     uv pip install --system -r /app/requirements.txt
 
 %test
-    python3 /app/main.py --help
+    python3 /app/usage-report.py --help

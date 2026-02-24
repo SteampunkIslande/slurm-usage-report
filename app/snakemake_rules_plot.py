@@ -60,6 +60,8 @@ def plot_snakemake_rule_efficicency(df: pl.DataFrame, column: str):
         showlegend=False,
         xaxis_title=column,
         yaxis_title="Règles Snakemake",
+        height=400
+        + 30 * len(rule_names),  # Ajuster la hauteur en fonction du nombre de règles
     )
 
     return fig.to_html()

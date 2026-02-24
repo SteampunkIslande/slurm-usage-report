@@ -175,14 +175,64 @@
   {% endmacro %}
 
   <h1>Rapport d'efficacité snakemake</h1>
-  <h2>Efficacité mémoire (quantité réellement utilisée / quantité requise) en %</h2>
+
+  <h2>Comment utiliser ce rapport pour optimiser vos pipelines</h2>
   <p>
-    La table ci-dessous mesure, pour chaque règle snakemake, le rapport entre la quantité de mémoire vive requise et ce
-    qui a réellement été utilisé.
+    Ce rapport analyse trois métriques clés de vos jobs Snakemake : l'efficacité mémoire, l'efficacité CPU et la durée
+    d'exécution.
+    Utilisez les recommandations ci-dessous pour améliorer les performances de vos pipelines et réduire le temps
+    d'exécution.
+  </p>
+
+  <h2>Efficacité mémoire (%)</h2>
+  <p>
+    Cette métrique correspond au rapport entre la mémoire réellement utilisée et la mémoire demandée.
     <br>
-    Attention, pour les jobs de moins de 30 secondes, la consommation affichée peut ne pas être représentative de ce que
-    le job a réellement consommé.
-    Cela est dû à la fréquence à laquelle SLURM évalue l'utilisation mémoire d'un job.
+    Elle mesure, pour chaque règle Snakemake, à quel point la mémoire allouée a été utilisée.
+    <br>
+    <strong>Attention :</strong> pour les jobs de moins de 30 secondes, la consommation affichée peut ne pas être
+    représentative de ce que le job a réellement consommé, en raison de la fréquence d'échantillonnage de SLURM.
+  </p>
+
+  <p>
+    <strong>Interprétation des valeurs :</strong>
+  </p>
+  <ul>
+    <li>
+      <strong>≈ 100&nbsp;%</strong> : allocation mémoire bien ajustée. C'est l'objectif à atteindre.
+    </li>
+    <li>
+      <strong>> 100&nbsp;%</strong> : risque de dépassement mémoire. Le job a utilisé plus de mémoire que demandé.
+    </li>
+    <li>
+      <strong>
+        < 50&nbsp;%</strong> : mémoire sur-allouée. Les ressources réservées sont largement supérieures aux
+          besoins réels.
+    </li>
+  </ul>
+
+  <p>
+    <strong>Conseils d'optimisation :</strong>
+  </p>
+  <ul>
+    <li>
+      <strong>Si l'efficacité est proche de 100&nbsp;%</strong> : votre allocation est optimale, aucune modification
+      nécessaire.
+    </li>
+    <li>
+      <strong>Si l'efficacité dépasse 100&nbsp;%</strong> : augmentez la valeur <code>mem_mb</code> dans les ressources
+      de votre pipeline pour éviter que le job ne soit tué par manque de mémoire. Essayez également de voir si la tâche
+      que vous lancez pourrait consommer moins de mémoire, en modifiant par exemple les options d'exécution.
+    </li>
+    <li>
+      <strong>Si l'efficacité est inférieure à 50&nbsp;%</strong> : réduisez la valeur <code>mem_mb</code> dans les
+      ressources de votre pipeline pour libérer des ressources et permettre ainsi à plus de jobs de s'exécuter
+      simultanément sur le cluster.
+    </li>
+  </ul>
+
+  <p>
+    Objectif recommandé : viser une efficacité mémoire comprise entre <strong>80&nbsp;% et 100&nbsp;%</strong>.
   </p>
 
   {{ render_table(efficiency_table_mem, color_thresholds=color_config) }}
@@ -197,52 +247,57 @@
     Cette métrique correspond à :
     <br>
     <strong>(Temps CPU total en secondes) / (Temps wall clock en secondes × Nombre de CPUs alloués) × 100</strong>
-  </p>
-
-  <p>
+    <br>
     Elle mesure, pour chaque règle Snakemake, à quel point les CPUs demandés ont réellement été utilisés.
   </p>
 
-  <ul>
-    <li>
-      <strong>≈ 100&nbsp;%</strong> : utilisation optimale.
-      Tous les CPUs alloués ont été utilisés en continu pendant toute la durée du job.
-    </li>
-    <li>
-      <strong>&lt; 90&nbsp;%</strong> : sous-utilisation.
-      La règle demande probablement trop de CPUs par rapport à ce qu’elle utilise réellement.
-    </li>
-    <li>
-      <strong>&gt; 100&nbsp;%</strong> : probable sur-utilisation (threads non déclarés).
-      Le programme lance plus de threads que le nombre de CPUs demandé à SLURM. Il faut alors aligner
-      <code>threads:</code> pour la règle Snakemake associée.
-      (<code>OMP_NUM_THREADS</code>, <code>MKL_NUM_THREADS</code>, etc.).
-    </li>
-  </ul>
-
   <p>
-    <strong>Comment interpréter ces valeurs&nbsp;?</strong>
+    <strong>Interprétation des valeurs :</strong>
   </p>
-
   <ul>
     <li>
-      Si l’efficacité est faible (&lt; 70–80&nbsp;%), réduisez le nombre de <code>threads</code>
-      dans la règle Snakemake pour éviter de réserver inutilement des ressources.
+      <strong>≈ 100&nbsp;%</strong> : utilisation optimale. Tous les CPUs alloués ont été utilisés en continu pendant
+      toute la durée du job.
     </li>
     <li>
-      Si l’efficacité dépasse 100&nbsp;%, assurez-vous que le nombre de threads utilisés
-      par le logiciel correspond bien à <code>threads:</code> dans Snakemake.
-      Sinon, vous risquez de surcharger les nœuds du cluster.
+      <strong>
+        < 90&nbsp;%</strong> : sous-utilisation. La règle demande probablement trop de CPUs par rapport à ce
+          qu'elle utilise réellement. En effet, passé un certain seuil, augmenter le nombre de threads n'a aucun effet
+          sur le temps d'exécution. Votre job est alors probablement limité par l'I/O.
     </li>
     <li>
-      Si l’efficacité est correcte mais que le job reste lent,
-      le goulot d’étranglement est probablement l’I/O ou la mémoire, pas le CPU.
+      <strong>> 100&nbsp;%</strong> : sur-utilisation (threads non déclarés). Le programme lance plus de threads que
+      le nombre de CPUs demandé à SLURM. Ceci peut représenter un grand danger pour le cluster, SLURM risquant d'allouer
+      plus de jobs que la capacité réelle.
     </li>
   </ul>
 
   <p>
-    Objectif recommandé : viser une efficacité CPU comprise entre <strong>85&nbsp;% et 100&nbsp;%</strong>,
-    tout en conservant un temps d’exécution raisonnable.
+    <strong>Conseils d'optimisation :</strong>
+  </p>
+  <ul>
+    <li>
+      <strong>Si l'efficacité est proche de 100&nbsp;%</strong> : votre allocation CPU est optimale, aucune modification
+      nécessaire.
+    </li>
+    <li>
+      <strong>Si l'efficacité est inférieure à 70-80&nbsp;%</strong> : réduisez le nombre de <code>threads</code> dans
+      la règle Snakemake pour éviter de réserver inutilement des ressources.
+    </li>
+    <li>
+      <strong>Si l'efficacité dépasse 100&nbsp;%</strong> : assurez-vous que le nombre de threads utilisés par le
+      logiciel correspond bien à <code>threads:</code> dans Snakemake. Vérifiez les variables d'environnement
+      <code>OMP_NUM_THREADS</code>, <code>MKL_NUM_THREADS</code>, etc. Sinon, vous risquez de surcharger les nœuds du
+      cluster.
+    </li>
+    <li>
+      <strong>Si l'efficacité est correcte mais que le job reste lent</strong> : le goulot d'étranglement est
+      probablement l'I/O ou la mémoire, pas le CPU.
+    </li>
+  </ul>
+
+  <p>
+    Objectif recommandé : viser une efficacité CPU comprise entre <strong>85&nbsp;% et 100&nbsp;%</strong>.
   </p>
 
   {{ render_table(efficiency_table_cpu, color_thresholds=color_config) }}
@@ -253,16 +308,70 @@
   </p>
 
   <h2>Durée d'exécution (en secondes)</h2>
+  <p>
+    La table ci-dessous mesure, pour chaque règle Snakemake, la durée d'exécution totale en secondes.
+    <br>
+    Cette information est essentielle pour optimiser l'ordonnancement des jobs sur le cluster.
+  </p>
 
   <p>
-    La table ci-dessous mesure, pour chaque règle snakemake, la durée d'exécution totale en secondes.
-    <br>
-    En connaissant mieux la durée de vos jobs, il devient possible de bénéficier de la propriété backfill de SLURM,
-    comme le montre le schéma ci-dessous:
+    <strong>Interprétation des valeurs :</strong>
+  </p>
+  <ul>
+    <li>
+      <strong>Jobs courts (< 30 secondes)</strong> : durée très courte, l'overhead du scheduling SLURM peut représenter
+          une part importante du temps total.
+    </li>
+    <li>
+      <strong>Jobs moyens (30 secondes - 1 h)</strong> : durée standard, bon compromis entre overhead et utilisation des
+      ressources.
+    </li>
+    <li>
+      <strong>Jobs longs (> 1 h)</strong> : durée importante, vérifiez si le pipeline peut être parallélisé
+      davantage.
+    </li>
+  </ul>
+
+  <p>
+    <strong>Conseils d'optimisation :</strong>
+  </p>
+  <ul>
+    <li>
+      <strong>Si le job est très court (< 5 min)</strong> : privilégiez des jobs plus longs en regroupant plusieurs
+          tâches ou en augmentant la granularité des règles pour réduire l'overhead du scheduling SLURM.
+    </li>
+    <li>
+      <strong>Si le job est long (> 1 h)</strong> : vérifiez si le pipeline peut être parallélisé davantage avec
+      les directives <code>group</code> ou <code>wildcards</code> pour exécuter des tâches indépendantes en parallèle.
+    </li>
+    <li>
+      <strong>Exploitez le backfill SLURM</strong> : en connaissant la durée de vos jobs, vous pouvez bénéficier du
+      mécanisme de backfill de SLURM. Les petits jobs peuvent s'insérer dans les espaces libres entre les gros jobs,
+      comme le montre le schéma ci-dessous, optimisant ainsi l'utilisation des ressources du cluster.
+    </li>
+  </ul>
   <p>
     <img src="https://hpc-wiki.info/mediawiki/hpc_images/c/c8/Scheduler-Tetris.png" style="width: 500px;" />
   </p>
+
+  <p>
+    <strong>Conseils généraux pour l'optimisation des pipelines Snakemake :</strong>
   </p>
+  <ul>
+    <li>
+      Utilisez <code>--profile</code> pour configurer les ressources par défaut et éviter de monopoliser le cluster.
+    </li>
+    <li>
+      Exploitez les <code>resources</code> dans vos règles pour déclarer les besoins spécifiques (mémoire, GPU, etc.).
+    </li>
+    <li>
+      Utilisez les règles <code>checkpoint</code> pour adapter le pipeline aux résultats intermédiaires.
+    </li>
+    <li>
+      Utilisez <code>--keep-going</code> pour continuer en cas d'échec d'une règle et identifier rapidement les
+      problèmes.
+    </li>
+  </ul>
 
   {{ render_table(efficiency_table_runtime, color_thresholds=color_config) }}
 
@@ -270,7 +379,6 @@
   <p class="plot">
     {{ runtime_box_plot | safe }}
   </p>
-  </div>
 </body>
 
 </html>

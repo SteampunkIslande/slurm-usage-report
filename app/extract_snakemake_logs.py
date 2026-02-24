@@ -96,7 +96,9 @@ def parse_log_file(log_path: Path, output_path: Path | None = None):
         out_file = sys.stdout
 
     writer = csv.writer(out_file, delimiter="|")
-    writer.writerow(["slurm_jobid", "job_id", "rule_name", "input_size_bytes"])
+    writer.writerow(
+        ["slurm_jobid", "job_id", "rule_name", "input_size_bytes", "inputs"]
+    )
 
     for record in records_gen:
         parsed_record = extract_from_record(record)
@@ -110,7 +112,15 @@ def parse_log_file(log_path: Path, output_path: Path | None = None):
         slurm_id = parsed_record["slurm_id"]
         rule_name = parsed_record["rule_name"]
         job_id = parsed_record["job_id"]
-        writer.writerow([slurm_id, job_id, rule_name, input_size_bytes])
+        writer.writerow(
+            [
+                slurm_id,
+                job_id,
+                rule_name,
+                input_size_bytes,
+                ",".join(str(p) for p in solved_inputs),
+            ]
+        )
 
     os.chdir(pwd)
 

@@ -347,9 +347,9 @@ def generate_snakemake_efficiency_report(
     if job_name:
         lf = lf.filter(pl.col("JobName") == job_name)
 
-    relaxed_df = lf.collect()
-
+    # Filtrer pour obtenir seulement les données avec des noms de règles
     lf = lf.filter(pl.col("rule_name").is_not_null())
+    relaxed_df = lf.collect()
 
     mem_box_plot = plot_snakemake_rule_efficicency(relaxed_df, "MemEfficiencyPercent")
     runtime_box_plot = plot_snakemake_rule_efficicency(relaxed_df, "ElapsedRaw")

@@ -187,23 +187,67 @@
 
   {{ render_table(efficiency_table_mem, color_thresholds=color_config) }}
 
-  <h2>Représentation graphique</h2>
+  <h2>Efficacité mémoire (représentation graphique)</h2>
   <p class="plot">
     {{ mem_box_plot | safe }}
   </p>
 
-  <h2>Efficacité CPU (temps CPU total en secondes / (temps wall clock en secondes * nb CPUs)) * 100 (en %)</h2>
+  <h2>Efficacité CPU (%)</h2>
   <p>
-    La table ci-dessous mesure, pour chaque règle snakemake, le rapport entre le temps CPU total utilisé et le produit
-    du temps wall clock par le nombre de CPUs alloués.
+    Cette métrique correspond à :
     <br>
-    Une valeur de 100% signifie que tous les CPUs ont été utilisés à plein temps pendant toute la durée du job.
-    Une valeur inférieure à 100% indique une sous-utilisation des CPUs alloués.
+    <strong>(Temps CPU total en secondes) / (Temps wall clock en secondes × Nombre de CPUs alloués) × 100</strong>
+  </p>
+
+  <p>
+    Elle mesure, pour chaque règle Snakemake, à quel point les CPUs demandés ont réellement été utilisés.
+  </p>
+
+  <ul>
+    <li>
+      <strong>≈ 100&nbsp;%</strong> : utilisation optimale.
+      Tous les CPUs alloués ont été utilisés en continu pendant toute la durée du job.
+    </li>
+    <li>
+      <strong>&lt; 90&nbsp;%</strong> : sous-utilisation.
+      La règle demande probablement trop de CPUs par rapport à ce qu’elle utilise réellement.
+    </li>
+    <li>
+      <strong>&gt; 100&nbsp;%</strong> : probable sur-utilisation (threads non déclarés).
+      Le programme lance plus de threads que le nombre de CPUs demandé à SLURM. Il faut alors aligner
+      <code>threads:</code> pour la règle Snakemake associée.
+      (<code>OMP_NUM_THREADS</code>, <code>MKL_NUM_THREADS</code>, etc.).
+    </li>
+  </ul>
+
+  <p>
+    <strong>Comment interpréter ces valeurs&nbsp;?</strong>
+  </p>
+
+  <ul>
+    <li>
+      Si l’efficacité est faible (&lt; 70–80&nbsp;%), réduisez le nombre de <code>threads</code>
+      dans la règle Snakemake pour éviter de réserver inutilement des ressources.
+    </li>
+    <li>
+      Si l’efficacité dépasse 100&nbsp;%, assurez-vous que le nombre de threads utilisés
+      par le logiciel correspond bien à <code>threads:</code> dans Snakemake.
+      Sinon, vous risquez de surcharger les nœuds du cluster.
+    </li>
+    <li>
+      Si l’efficacité est correcte mais que le job reste lent,
+      le goulot d’étranglement est probablement l’I/O ou la mémoire, pas le CPU.
+    </li>
+  </ul>
+
+  <p>
+    Objectif recommandé : viser une efficacité CPU comprise entre <strong>85&nbsp;% et 100&nbsp;%</strong>,
+    tout en conservant un temps d’exécution raisonnable.
   </p>
 
   {{ render_table(efficiency_table_cpu, color_thresholds=color_config) }}
 
-  <h2>Représentation graphique</h2>
+  <h2>Efficacité CPU (représentation graphique)</h2>
   <p class="plot">
     {{ cpu_box_plot | safe }}
   </p>
@@ -222,7 +266,7 @@
 
   {{ render_table(efficiency_table_runtime, color_thresholds=color_config) }}
 
-  <h2>Représentation graphique</h2>
+  <h2>Durée d'exécution (représentation graphique)</h2>
   <p class="plot">
     {{ runtime_box_plot | safe }}
   </p>

@@ -51,7 +51,7 @@ if __name__ == "__main__":
             ),  # servira pour une évolution de usage-report, pour rapporter les métriques d'efficacité en fonction de la taille des inputs
         ],
         text=True,
-    )
+    ).rstrip()
     try:
         with open(
             report_path_csv,

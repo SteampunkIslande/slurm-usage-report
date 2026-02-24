@@ -376,11 +376,11 @@ def generate_snakemake_efficiency_report(
         .sort("rule_name")
         .select(
             pl.col("rule_name").alias("Nom de la règle"),
-            pl.col("MemEfficiencyPercent_mean").alias("Moyenne"),
-            pl.col("MemEfficiencyPercent_median").alias("Médiane"),
-            pl.col("MemEfficiencyPercent_std").alias("Ecart-type"),
-            pl.col("MemEfficiencyPercent_min").alias("Minimum"),
-            pl.col("MemEfficiencyPercent_max").alias("Maximum"),
+            pl.col("MemEfficiencyPercent_mean").alias("Efficacité mémoire moyenne"),
+            pl.col("MemEfficiencyPercent_median").alias("Efficacité mémoire médiane"),
+            pl.col("MemEfficiencyPercent_std").alias("Efficacité mémoire (écart-type)"),
+            pl.col("MemEfficiencyPercent_min").alias("Efficacité mémoire minimum"),
+            pl.col("MemEfficiencyPercent_max").alias("Efficacité mémoire maximum"),
         )
         .to_dict(as_series=False)
     )
@@ -399,11 +399,11 @@ def generate_snakemake_efficiency_report(
         .sort("rule_name")
         .select(
             pl.col("rule_name").alias("Nom de la règle"),
-            pl.col("ElapsedRaw_mean").alias("Moyenne"),
-            pl.col("ElapsedRaw_median").alias("Médiane"),
-            pl.col("ElapsedRaw_std").alias("Ecart-type"),
-            pl.col("ElapsedRaw_min").alias("Minimum"),
-            pl.col("ElapsedRaw_max").alias("Maximum"),
+            pl.col("ElapsedRaw_mean").alias("Durée moyenne"),
+            pl.col("ElapsedRaw_median").alias("Durée médiane"),
+            pl.col("ElapsedRaw_std").alias("Durée (écart-type)"),
+            pl.col("ElapsedRaw_min").alias("Durée minimum"),
+            pl.col("ElapsedRaw_max").alias("Durée maximum"),
         )
         .to_dict(as_series=False)
     )
@@ -422,10 +422,13 @@ def generate_snakemake_efficiency_report(
             "efficiency_table_mem": efficiency_table_mem,
             "efficiency_table_runtime": efficiency_table_runtime,
             "color_config": {
-                "Moyenne": DEFAULT_CMAP,
-                "Médiane": DEFAULT_CMAP,
-                "Minimum": DEFAULT_CMAP,
-                "Maximum": DEFAULT_CMAP,
+                v: DEFAULT_CMAP
+                for v in [
+                    "Efficacité mémoire moyenne",
+                    "Efficacité mémoire médiane",
+                    "Efficacité mémoire minimum",
+                    "Efficacité mémoire maximum",
+                ]
             },
         }
     )

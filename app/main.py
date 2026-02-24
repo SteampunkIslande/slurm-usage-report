@@ -337,6 +337,25 @@ def generic_usage_excel(input_parquet: Path, output_excel: Path):
     lf.collect().write_excel(output_excel)
 
 
+def color_from_threshold_map(value, thresholds):
+    latest_color = thresholds[0][1]  # Default color if value is below all thresholds
+    for threshold, color in thresholds:
+        if value < threshold:
+            return color
+        latest_color = color
+    return latest_color
+
+
+DEFAULT_CMAP = [
+    (20, "#ff0000"),
+    (60, "#d4a500"),
+    (75, "#ffa500"),
+    (100, "#008000"),
+    (125, "#ffa500"),
+    (150, "#ff0000"),
+]
+
+
 def generate_snakemake_efficiency_report(
     input_parquet: Path, output_html: Path, job_name: str = None
 ):
@@ -356,17 +375,72 @@ def generate_snakemake_efficiency_report(
 
     lf = aggregate_per_snakemake_rule(lf)
 
-    efficiency_table = lf.collect()._repr_html_()
+    efficiency_table_mem = (
+        lf.select(
+            [
+                "rule_name",
+                "MemEfficiencyPercent_mean",
+                "MemEfficiencyPercent_median",
+                "MemEfficiencyPercent_std",
+                "MemEfficiencyPercent_min",
+                "MemEfficiencyPercent_max",
+            ]
+        )
+        .collect()
+        .sort("rule_name")
+        .select(
+            pl.col("rule_name").alias("Nom de la règle"),
+            pl.col("MemEfficiencyPercent_mean").alias("Moyenne"),
+            pl.col("MemEfficiencyPercent_median").alias("Médiane"),
+            pl.col("MemEfficiencyPercent_std").alias("Ecart-type"),
+            pl.col("MemEfficiencyPercent_min").alias("Minimum"),
+            pl.col("MemEfficiencyPercent_max").alias("Maximum"),
+        )
+        .to_dict(as_series=False)
+    )
+    efficiency_table_runtime = (
+        lf.select(
+            [
+                "rule_name",
+                "ElapsedRaw_mean",
+                "ElapsedRaw_median",
+                "ElapsedRaw_std",
+                "ElapsedRaw_min",
+                "ElapsedRaw_max",
+            ]
+        )
+        .collect()
+        .sort("rule_name")
+        .select(
+            pl.col("rule_name").alias("Nom de la règle"),
+            pl.col("ElapsedRaw_mean").alias("Moyenne"),
+            pl.col("ElapsedRaw_median").alias("Médiane"),
+            pl.col("ElapsedRaw_std").alias("Ecart-type"),
+            pl.col("ElapsedRaw_min").alias("Minimum"),
+            pl.col("ElapsedRaw_max").alias("Maximum"),
+        )
+        .to_dict(as_series=False)
+    )
 
     env = j2.Environment(
         loader=j2.FileSystemLoader(os.path.join(os.path.dirname(__file__), "templates"))
     )
+    env.filters["format_header"] = lambda t: t.replace("_", "\n")
+    # Add filter that takes a list of (threshold, color) pairs and a value, and returns the color corresponding to the first threshold that the value is below
+    env.filters["color_threshold"] = color_from_threshold_map
     template = env.get_template("snakemake_report_template.html.j2")
     output = template.render(
         {
             "mem_box_plot": mem_box_plot,
             "runtime_box_plot": runtime_box_plot,
-            "efficiency_table": efficiency_table,
+            "efficiency_table_mem": efficiency_table_mem,
+            "efficiency_table_runtime": efficiency_table_runtime,
+            "color_config": {
+                "Moyenne": DEFAULT_CMAP,
+                "Médiane": DEFAULT_CMAP,
+                "Minimum": DEFAULT_CMAP,
+                "Maximum": DEFAULT_CMAP,
+            },
         }
     )
     with open(output_html, "w") as f:

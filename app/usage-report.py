@@ -459,12 +459,13 @@ def generate_snakemake_efficiency_report(
     if database:
         try:
             db.sql(
-                """SELECT * FROM read_parquet('{}/*.parquet') WHERE JobName IN ({})""".format(
-                    database, ",".join(f"'{j}'" for j in job_names)
+                """COPY (SELECT * FROM read_parquet('{}/*.parquet') WHERE JobName IN ({})) TO '{}'""".format(
+                    database, ",".join(f"'{j}'" for j in job_names), input_parquet
                 )
-            ).write_parquet(input_parquet)
+            )
         except Exception as e:
             print(f"Erreur lors de l'enregistrement de {str(input_parquet)}: {e}")
+            sys.exit(1)
 
     lf = pl.scan_parquet(input_parquet)
     lf = generic_report(lf)

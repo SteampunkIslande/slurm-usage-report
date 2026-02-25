@@ -125,7 +125,7 @@ if __name__ == "__main__":
                 check=True,
             )
 
-            if output_path.is_file():
+            if output_path.with_suffix(".csv").is_file():
                 output_path.unlink()
 
         except subprocess.CalledProcessError as e:

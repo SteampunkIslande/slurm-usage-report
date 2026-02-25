@@ -83,22 +83,16 @@ def extract_from_record(record_lines):
     }
 
 
-def parse_log_file(log_path: Path, output_path: Path | None = None):
+def parse_log_file(log_path: Path, output_path: Path):
     pwd = os.getcwd()
     project_dir: Path = find_project_dir(log_path)
     if project_dir is not None:
         os.chdir(project_dir)
 
     records_gen = snakemake_log_records_generator(log_path)
-    if output_path:
-        out_file = output_path.open("w", newline="", encoding="utf-8")
-    else:
-        out_file = sys.stdout
+    out_file = output_path.open("a", encoding="utf-8")
 
     writer = csv.writer(out_file, delimiter="|")
-    writer.writerow(
-        ["slurm_jobid", "job_id", "rule_name", "input_size_bytes", "inputs"]
-    )
 
     for record in records_gen:
         parsed_record = extract_from_record(record)
@@ -127,41 +121,56 @@ def parse_log_file(log_path: Path, output_path: Path | None = None):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Extraire tailles d'inputs par SLURM job id depuis un log Snakemake"
+        description="Extraire les tailles des fichiers d'entrée pour chaque exécution de Snakemake, "
+        "à partir du(des) fichier(s) de log généré(s) par Snakemake."
     )
     parser.add_argument(
         "-i",
         "--input",
         dest="logfile",
-        help="Fichier de log Snakemake (ex: .snakemake/log/xxx.log)",
+        nargs="+",
+        help="Fichier(s) de log Snakemake. Possibilité de définir plusieurs fois (ex: .snakemake/log/xxx.log)",
     )
     parser.add_argument(
         "-o",
         "--output",
         dest="output",
-        help="Fichier CSV de sortie (défaut: stdout)",
+        help="Fichier CSV de sortie",
+        required=True,
     )
 
     argcomplete.autocomplete(parser)
 
     args = parser.parse_args()
 
-    log_path = Path(args.logfile)
-    if not log_path.exists():
-        print(f"Fichier de log introuvable: {log_path}", file=sys.stderr)
-        sys.exit(2)
+    log_paths = [Path(p).absolute().resolve() for p in args.logfile]
+    for log_path in log_paths:
+        if not log_path.exists():
+            print(f"Fichier de log introuvable: {log_path}", file=sys.stderr)
+            sys.exit(2)
 
-    output_path = Path(args.output) if args.output else None
+    output_path = Path(args.output).absolute().resolve()
 
-    with log_path.open("r") as f:
-        for line in f:
-            if "SLURM run ID: " in line:
-                # Petit bonus: tandis que les infos sur la taille des inputs sont extraites, on affiche aussi le SLURM run ID pour que
-                # l'utilisateur puisse faire le lien entre les logs et les rapports sacct générés par snakemake_post_run_sacct.py
-                print(line.strip()[14:])
-                break
+    for log_path in log_paths:
+        with log_path.open("r") as f:
+            for line in f:
+                if "SLURM run ID: " in line:
+                    # Petit bonus: tandis que les infos sur la taille des inputs sont extraites, on affiche aussi le SLURM run ID pour que
+                    # l'utilisateur puisse faire le lien entre les logs et les rapports sacct générés par snakemake_post_run_sacct.py
+                    print(line.strip()[14:])
+                    break
 
-    parse_log_file(log_path, output_path)
+    with output_path.open("w", encoding="utf-8") as f:
+        writer = csv.writer(
+            f,
+            delimiter="|",
+        )
+        writer.writerow(
+            ["slurm_jobid", "job_id", "rule_name", "input_size_bytes", "inputs"]
+        )
+
+    for log_path in log_paths:
+        parse_log_file(log_path, output_path)
 
 
 if __name__ == "__main__":

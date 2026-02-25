@@ -459,8 +459,8 @@ def generate_snakemake_efficiency_report(
     if database:
         try:
             db.sql(
-                """SELECT * FROM sacct_all.parquet WHERE JobName IN ({})""".format(
-                    ",".join(f"'{j}'" for j in job_names)
+                """SELECT * FROM read_parquet('{}/*.parquet') WHERE JobName IN ({})""".format(
+                    database, ",".join(f"'{j}'" for j in job_names)
                 )
             ).write_parquet(input_parquet)
         except Exception as e:

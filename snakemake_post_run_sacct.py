@@ -79,6 +79,8 @@ if __name__ == "__main__":
             [
                 "singularity",
                 "exec",
+                "-B",
+                "/tmp",
                 "/SINGULARITIES/slurm-usage-report-1.0.0.sif",
                 "/app/usage-report.py",
                 "csv_to_parquet",
@@ -89,12 +91,13 @@ if __name__ == "__main__":
             ],
             text=True,
             check=True,
-            env={**os.environ, "SINGULARITY_BIND": "/tmp"},
         )
         subprocess.run(
             [
                 "singularity",
                 "exec",
+                "-B",
+                "/tmp",
                 "/SINGULARITIES/slurm-usage-report-1.0.0.sif",
                 "/app/usage-report.py",
                 "snakemake_efficiency",
@@ -105,7 +108,6 @@ if __name__ == "__main__":
             ],
             text=True,
             check=True,
-            env={**os.environ, "SINGULARITY_BIND": "/tmp"},
         )
 
         if report_path_csv.is_file():

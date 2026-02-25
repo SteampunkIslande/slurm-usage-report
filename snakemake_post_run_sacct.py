@@ -126,7 +126,7 @@ if __name__ == "__main__":
             )
 
             if output_path.with_suffix(".csv").is_file():
-                output_path.unlink()
+                output_path.with_suffix(".csv").unlink()
 
         except subprocess.CalledProcessError as e:
             print(f"Error calling sacct: {e}")

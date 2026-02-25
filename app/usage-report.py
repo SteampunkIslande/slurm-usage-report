@@ -126,11 +126,25 @@ def aggregate_per_alloc(lf: pl.LazyFrame, group_col="JobRoot") -> pl.LazyFrame:
 
 
 def add_snakerule_col(lf: pl.LazyFrame) -> pl.LazyFrame:
-    return lf.with_columns(
-        pl.col("Comment")
-        .str.extract_groups(r"^rule_(?<rule_name>.+?)_wildcards_(?<wildcards>.+)")
-        .struct.unnest()
+    lf = lf.with_columns(
+        pl.when(pl.col("Comment").str.contains(r"^rule_.+?_wildcards_.+"))
+        .then(
+            pl.col("Comment")
+            .str.extract_groups(r"^rule_(?<rule_name>.+?)_wildcards_(?<wildcards>.+)")
+            .struct.unnest()
+        )
+        .when(pl.col("Comment").str.contains(r"^rule_.+?"))
+        .then(
+            pl.col("Comment")
+            .str.extract_groups(r"^rule_(?<rule_name>.+)$")
+            .struct.with_fields(pl.lit(None).alias("wildcards"))
+            .struct.unnest(),
+        )
+        .otherwise(
+            pl.struct(rule_name=pl.lit(None), wildcards=pl.lit(None)).struct.unnest()
+        )
     )
+    return lf
 
 
 def aggregate_per_snakemake_rule(lf: pl.LazyFrame) -> pl.LazyFrame:
@@ -171,49 +185,48 @@ def parse_total_cpu_col(lf: pl.LazyFrame) -> pl.LazyFrame:
     # TotalCPU est le temps CPU utilisateur en secondes
     # Formats possibles: HH:MM:SS, MM:SS.ms, JJ-HH:MM:SS
 
-    # Étape 1: Extraire les composants selon le format
     lf = lf.with_columns(
         pl.when(pl.col("TotalCPU").str.contains(r"^\d+-\d+:\d+:\d+$"))
         .then(
-            pl.col("TotalCPU").str.extract_groups(
+            pl.col("TotalCPU")
+            .str.extract_groups(
                 r"(?<days>\d+)-(?<hours>\d+):(?<minutes>\d+):(?<seconds>\d+)"
             )
+            .alias("TotalCPU_Parsed")
         )
         .when(pl.col("TotalCPU").str.contains(r"^\d+:\d+:\d+$"))
         .then(
-            pl.col("TotalCPU").str.extract_groups(
-                r"(?<hours>\d+):(?<minutes>\d+):(?<seconds>\d+)"
-            )
+            pl.col("TotalCPU")
+            .str.extract_groups(r"(?<hours>\d+):(?<minutes>\d+):(?<seconds>\d+)")
+            .struct.with_fields(pl.lit(0).alias("days"))
+            .alias("TotalCPU_Parsed")
         )
         .when(pl.col("TotalCPU").str.contains(r"^\d+:\d+\.\d+$"))
-        .then(pl.col("TotalCPU").str.extract_groups(r"(?<minutes>\d+):(?<seconds>\d+)"))
-        .otherwise(pl.lit(None))
-        .alias("TotalCPU_parsed")
+        .then(
+            pl.col("TotalCPU")
+            .str.extract_groups(r"(?<minutes>\d+):(?<seconds>\d+)")
+            .struct.with_fields(pl.lit(0).alias("days"), pl.lit(0).alias("hours"))
+            .alias("TotalCPU_Parsed")
+        )
+        .otherwise(
+            pl.struct(
+                days=pl.lit(0), hours=pl.lit(0), minutes=pl.lit(0), seconds=pl.lit(0)
+            ).alias("TotalCPU_Parsed")
+        )
     )
 
-    # Étape 2: Calculer les secondes à partir des composants
     lf = lf.with_columns(
-        pl.when(pl.col("TotalCPU_parsed").struct.field("days").is_not_null())
-        .then(
-            pl.col("TotalCPU_parsed").struct.field("days").cast(pl.Int64) * 86400
-            + pl.col("TotalCPU_parsed").struct.field("hours").cast(pl.Int64) * 3600
-            + pl.col("TotalCPU_parsed").struct.field("minutes").cast(pl.Int64) * 60
-            + pl.col("TotalCPU_parsed").struct.field("seconds").cast(pl.Int64)
+        pl.col("TotalCPU_Parsed")
+        .struct.with_fields(
+            (
+                pl.col("TotalCPU_Parsed").struct.field("days").cast(pl.Int64) * 86400
+                + pl.col("TotalCPU_Parsed").struct.field("hours").cast(pl.Int64) * 3600
+                + pl.col("TotalCPU_Parsed").struct.field("minutes").cast(pl.Int64) * 60
+                + pl.col("TotalCPU_Parsed").struct.field("seconds").cast(pl.Int64)
+            ).alias("TotalCPU_seconds")
         )
-        .when(pl.col("TotalCPU_parsed").struct.field("hours").is_not_null())
-        .then(
-            pl.col("TotalCPU_parsed").struct.field("hours").cast(pl.Int64) * 3600
-            + pl.col("TotalCPU_parsed").struct.field("minutes").cast(pl.Int64) * 60
-            + pl.col("TotalCPU_parsed").struct.field("seconds").cast(pl.Int64)
-        )
-        .when(pl.col("TotalCPU_parsed").struct.field("minutes").is_not_null())
-        .then(
-            pl.col("TotalCPU_parsed").struct.field("minutes").cast(pl.Int64) * 60
-            + pl.col("TotalCPU_parsed").struct.field("seconds").cast(pl.Int64)
-        )
-        .otherwise(pl.lit(None))
-        .alias("TotalCPU_seconds")
-    ).drop("TotalCPU_parsed")
+        .struct.field("TotalCPU_seconds")
+    ).drop("TotalCPU_Parsed")
 
     return lf
 

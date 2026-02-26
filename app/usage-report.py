@@ -433,9 +433,24 @@ def generic_usage_excel(input_parquet: Path, output_excel: Path):
     lf.collect().write_excel(output_excel)
 
 
+def add_metrics_relative_to_input_size(
+    intermediate_parquet: Path, input_sizes: Path, augmented_parquet: Path
+):
+    db.sql(
+        f"""COPY ("""
+        f"""SELECT *,((run_metrics.ElapsedRaw/60)/(insizes.input_size_bytes/pow(2,20))) AS MinPerMo,"""
+        """((run_metrics.ReqMem/pow(2,20))/(insizes.input_size_bytes/pow(2,20))) AS UsedRAMPerMo """
+        f"""FROM read_parquet('{intermediate_parquet}') run_metrics """
+        f"""LEFT JOIN read_csv('{input_sizes}') insizes """
+        """ON insizes.slurm_jobid = run_metrics.JobID AND insizes.input_size_bytes != 0"""
+        f""") TO {augmented_parquet}"""
+    )
+
+
 def generate_snakemake_efficiency_report(
     input_parquet: Path,
     output_html: Path,
+    input_sizes_csv: Path = None,
     job_names: list[str] = None,
     database: Path = None,
     output_parquet: Path = None,
@@ -478,16 +493,39 @@ def generate_snakemake_efficiency_report(
 
     # Filtrer pour obtenir seulement les données avec des noms de règles
     lf = lf.filter(pl.col("rule_name").is_not_null())
+
+    if input_sizes_csv:
+        # Enregistrer le lazyframe actuel dans un fichier temporaire pour ajouter les métriques relatives à la taille des entrées
+        # en utilisant duckdb (interopérabilité)
+        intermediate_parquet = input_parquet.with_suffix(".tmp.parquet")
+        if intermediate_parquet.exists():
+            print(f"{intermediate_parquet} existe déjà !", file=sys.stderr)
+            sys.exit(1)
+        lf.sink_parquet(intermediate_parquet)
+        augmented_parquet = output_parquet or intermediate_parquet.with_suffix(
+            ".with-input-sizes.parquet"
+        )
+        add_metrics_relative_to_input_size(
+            intermediate_parquet, input_sizes_csv, augmented_parquet
+        )
+        # Intermediate parquet ne sert plus
+        intermediate_parquet.unlink()
+        lf = pl.scan_parquet(augmented_parquet)
+
+    # Réaliser ici toutes les opérations qui nécessitent le dataframe complet (relâché)
     relaxed_df = lf.collect()
 
     mem_box_plot = plot_snakemake_rule_efficicency(relaxed_df, "MemEfficiencyPercent")
     cpu_box_plot = plot_snakemake_rule_efficicency(relaxed_df, "CPUEfficiencyPercent")
     runtime_box_plot = plot_snakemake_rule_efficicency(relaxed_df, "ElapsedRaw")
+    relative_mem_box_plot = plot_snakemake_rule_efficicency(relaxed_df, "UsedRAMPerMo")
+    relative_runtime_box_plot = plot_snakemake_rule_efficicency(
+        relaxed_df, "MinutesPerMo"
+    )
+
+    # A partir d'ici, toutes les opérations ont lieu sur un lazyframe aggrégé (groupé par règle, très peu de colonnes)
 
     lf = aggregate_per_snakemake_rule(lf)
-
-    if output_parquet:
-        lf.sink_parquet(output_parquet)
 
     efficiency_table_mem = (
         lf.select(
@@ -717,6 +755,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_smk.add_argument(
         "--output-parquet",
         help="Nom du fichier parquet où sauvegarder les données de performance consolidées pour les runs snakemake spécifiés",
+        type=Path,
+    )
+    p_smk.add_argument(
+        "--sizes",
+        "-s",
+        dest="input_sizes_csv",
+        help="Nom du fichier contenant les tailles des fichiers d'entrée de snakemake",
         type=Path,
     )
 

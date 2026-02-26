@@ -59,7 +59,7 @@ if __name__ == "__main__":
             "-o",
             output_path.with_suffix(
                 ".input-sizes.csv"
-            ),  # servira pour une évolution de usage-report, pour rapporter les métriques d'efficacité en fonction de la taille des inputs
+            ),  # Permet ensuite de rapporter les métriques de run à la taille des fichiers
         ],
         text=True,
     ).splitlines()
@@ -120,6 +120,10 @@ if __name__ == "__main__":
                     output_path,
                     "-o",
                     output_path.with_suffix(".html"),
+                    "-s",
+                    output_path.with_suffix(".input-sizes.csv"),
+                    "--output-parquet",
+                    output_path,
                 ],
                 text=True,
                 check=True,
@@ -149,6 +153,8 @@ if __name__ == "__main__":
                 *slurm_job_names,
                 "-o",
                 output_path.with_suffix(".html"),
+                "-s",
+                output_path.with_suffix(".input-sizes.csv"),
             ],
             text=True,
             check=True,

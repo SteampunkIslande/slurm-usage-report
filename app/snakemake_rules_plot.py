@@ -2,7 +2,7 @@ import polars as pl
 import plotly.graph_objects as go
 
 
-def plot_snakemake_rule_efficicency(df: pl.DataFrame, column: str):
+def plot_snakemake_rule_efficicency(df: pl.DataFrame, column: str, title: str):
 
     rule_names = sorted(df["rule_name"].unique().to_list(), reverse=True)
 
@@ -58,7 +58,7 @@ def plot_snakemake_rule_efficicency(df: pl.DataFrame, column: str):
             }
         ],
         showlegend=False,
-        xaxis_title=column,
+        xaxis_title=title,
         yaxis_title="Règles Snakemake",
         height=400
         + 30 * len(rule_names),  # Ajuster la hauteur en fonction du nombre de règles

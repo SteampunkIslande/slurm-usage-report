@@ -148,7 +148,7 @@ def add_snakerule_col(lf: pl.LazyFrame) -> pl.LazyFrame:
     return lf
 
 
-def aggregate_per_snakemake_rule(lf: pl.LazyFrame) -> pl.LazyFrame:
+def aggregate_per_snakemake_rule(lf: pl.LazyFrame, input_sizes: bool) -> pl.LazyFrame:
 
     lf = lf.group_by("rule_name").agg(
         # Rapport entre MaxRSS et ReqMem par règle
@@ -170,16 +170,22 @@ def aggregate_per_snakemake_rule(lf: pl.LazyFrame) -> pl.LazyFrame:
         pl.col("ElapsedRaw").min().name.suffix("_min"),
         pl.col("ElapsedRaw").max().name.suffix("_max"),
         # Métriques rapportées à la taille des entrées
-        pl.col("UsedRAMPerMo").mean().name.suffix("_mean"),
-        pl.col("UsedRAMPerMo").median().name.suffix("_median"),
-        pl.col("UsedRAMPerMo").std().name.suffix("_std"),
-        pl.col("UsedRAMPerMo").min().name.suffix("_min"),
-        pl.col("UsedRAMPerMo").max().name.suffix("_max"),
-        pl.col("MinPerMo").mean().name.suffix("_mean"),
-        pl.col("MinPerMo").median().name.suffix("_median"),
-        pl.col("MinPerMo").std().name.suffix("_std"),
-        pl.col("MinPerMo").min().name.suffix("_min"),
-        pl.col("MinPerMo").max().name.suffix("_max"),
+        *[
+            e
+            for e in [
+                pl.col("UsedRAMPerMo").mean().name.suffix("_mean"),
+                pl.col("UsedRAMPerMo").median().name.suffix("_median"),
+                pl.col("UsedRAMPerMo").std().name.suffix("_std"),
+                pl.col("UsedRAMPerMo").min().name.suffix("_min"),
+                pl.col("UsedRAMPerMo").max().name.suffix("_max"),
+                pl.col("MinPerMo").mean().name.suffix("_mean"),
+                pl.col("MinPerMo").median().name.suffix("_median"),
+                pl.col("MinPerMo").std().name.suffix("_std"),
+                pl.col("MinPerMo").min().name.suffix("_min"),
+                pl.col("MinPerMo").max().name.suffix("_max"),
+            ]
+            if input_sizes
+        ],
         # Durée d'exécution minimale
         pl.col("Elapsed").min().alias("Elapsed_min"),
         # Durée d'exécution maximale
@@ -543,15 +549,35 @@ def generate_snakemake_efficiency_report(
     # Réaliser ici toutes les opérations qui nécessitent le dataframe complet (relâché)
     relaxed_df = lf.collect()
 
-    mem_box_plot = plot_snakemake_rule_efficicency(relaxed_df, "MemEfficiencyPercent")
-    cpu_box_plot = plot_snakemake_rule_efficicency(relaxed_df, "CPUEfficiencyPercent")
-    runtime_box_plot = plot_snakemake_rule_efficicency(relaxed_df, "ElapsedRaw")
-    relative_mem_box_plot = plot_snakemake_rule_efficicency(relaxed_df, "UsedRAMPerMo")
-    relative_runtime_box_plot = plot_snakemake_rule_efficicency(relaxed_df, "MinPerMo")
+    mem_box_plot = plot_snakemake_rule_efficicency(
+        relaxed_df, "MemEfficiencyPercent", "Efficacité mémoire (%)"
+    )
+    cpu_box_plot = plot_snakemake_rule_efficicency(
+        relaxed_df, "CPUEfficiencyPercent", "Taux d'utilisation des CPUs (%)"
+    )
+    runtime_box_plot = plot_snakemake_rule_efficicency(
+        relaxed_df, "ElapsedRaw", "Durée d'exécution (en secondes)"
+    )
+
+    # Eviter d'avoir une erreur 'missing column'
+    if input_sizes_csv:
+        relative_mem_box_plot = plot_snakemake_rule_efficicency(
+            relaxed_df,
+            "UsedRAMPerMo",
+            "Quantité de RAM utilisée (en Mo) par Mo de fichier(s) d'entrée",
+        )
+        relative_runtime_box_plot = plot_snakemake_rule_efficicency(
+            relaxed_df,
+            "MinPerMo",
+            "Durée d'exécution (en minutes) par Mo de fichier(s) d'entrée",
+        )
+    else:
+        relative_mem_box_plot = None
+        relative_runtime_box_plot = None
 
     # A partir d'ici, toutes les opérations ont lieu sur un lazyframe aggrégé (groupé par règle, très peu de colonnes)
 
-    lf = aggregate_per_snakemake_rule(lf)
+    lf = aggregate_per_snakemake_rule(lf, bool(input_sizes_csv))
 
     efficiency_table_mem = (
         lf.select(
@@ -623,53 +649,58 @@ def generate_snakemake_efficiency_report(
         .to_dict(as_series=False)
     )
 
-    efficiency_table_relative_mem = (
-        lf.select(
-            [
-                "rule_name",
-                "UsedRAMPerMo_mean",
-                "UsedRAMPerMo_median",
-                "UsedRAMPerMo_std",
-                "UsedRAMPerMo_min",
-                "UsedRAMPerMo_max",
-            ]
-        )
-        .collect()
-        .sort("rule_name")
-        .select(
-            pl.col("rule_name").alias("Nom de la règle"),
-            pl.col("UsedRAMPerMo_mean").alias("RAM utilisée par Mo (moyenne)"),
-            pl.col("UsedRAMPerMo_median").alias("RAM utilisée par Mo (médiane)"),
-            pl.col("UsedRAMPerMo_std").alias("RAM utilisée par Mo (écart-type)"),
-            pl.col("UsedRAMPerMo_min").alias("RAM utilisée par Mo (minimum)"),
-            pl.col("UsedRAMPerMo_max").alias("RAM utilisée par Mo (maximum)"),
-        )
-        .to_dict(as_series=False)
-    )
+    if input_sizes_csv:
 
-    efficiency_table_relative_runtime = (
-        lf.select(
-            [
-                "rule_name",
-                "MinPerMo_mean",
-                "MinPerMo_median",
-                "MinPerMo_std",
-                "MinPerMo_min",
-                "MinPerMo_max",
-            ]
+        efficiency_table_relative_mem = (
+            lf.select(
+                [
+                    "rule_name",
+                    "UsedRAMPerMo_mean",
+                    "UsedRAMPerMo_median",
+                    "UsedRAMPerMo_std",
+                    "UsedRAMPerMo_min",
+                    "UsedRAMPerMo_max",
+                ]
+            )
+            .collect()
+            .sort("rule_name")
+            .select(
+                pl.col("rule_name").alias("Nom de la règle"),
+                pl.col("UsedRAMPerMo_mean").alias("RAM utilisée par Mo (moyenne)"),
+                pl.col("UsedRAMPerMo_median").alias("RAM utilisée par Mo (médiane)"),
+                pl.col("UsedRAMPerMo_std").alias("RAM utilisée par Mo (écart-type)"),
+                pl.col("UsedRAMPerMo_min").alias("RAM utilisée par Mo (minimum)"),
+                pl.col("UsedRAMPerMo_max").alias("RAM utilisée par Mo (maximum)"),
+            )
+            .to_dict(as_series=False)
         )
-        .collect()
-        .sort("rule_name")
-        .select(
-            pl.col("rule_name").alias("Nom de la règle"),
-            pl.col("MinPerMo_mean").alias("Minutes par Mo (moyenne)"),
-            pl.col("MinPerMo_median").alias("Minutes par Mo (médiane)"),
-            pl.col("MinPerMo_std").alias("Minutes par Mo (écart-type)"),
-            pl.col("MinPerMo_min").alias("Minutes par Mo (minimum)"),
-            pl.col("MinPerMo_max").alias("Minutes par Mo (maximum)"),
+
+        efficiency_table_relative_runtime = (
+            lf.select(
+                [
+                    "rule_name",
+                    "MinPerMo_mean",
+                    "MinPerMo_median",
+                    "MinPerMo_std",
+                    "MinPerMo_min",
+                    "MinPerMo_max",
+                ]
+            )
+            .collect()
+            .sort("rule_name")
+            .select(
+                pl.col("rule_name").alias("Nom de la règle"),
+                pl.col("MinPerMo_mean").alias("Minutes par Mo (moyenne)"),
+                pl.col("MinPerMo_median").alias("Minutes par Mo (médiane)"),
+                pl.col("MinPerMo_std").alias("Minutes par Mo (écart-type)"),
+                pl.col("MinPerMo_min").alias("Minutes par Mo (minimum)"),
+                pl.col("MinPerMo_max").alias("Minutes par Mo (maximum)"),
+            )
+            .to_dict(as_series=False)
         )
-        .to_dict(as_series=False)
-    )
+    else:
+        efficiency_table_relative_mem = None
+        efficiency_table_relative_runtime = None
 
     env = j2.Environment(
         loader=j2.FileSystemLoader(os.path.join(os.path.dirname(__file__), "templates"))

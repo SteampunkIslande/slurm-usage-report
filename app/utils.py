@@ -228,14 +228,34 @@ COLOR_MAPS = {"default": DEFAULT_CMAP}
 
 def add_wait_time_cols(lf: pl.LazyFrame) -> pl.LazyFrame:
     # Ajoute une colonne wait_dt qui est un time delta représentant le temps d'attente entre soumission d'un job et son démarrage
-    return lf.with_columns(
-        (
-            pl.col("Start").str.to_datetime(strict=False)
-            - pl.col("Submit").str.to_datetime(strict=False)
-        ).alias("wait_dt")
-    ).with_columns(
-        pl.col("wait_dt").dt.total_seconds().alias("wait_time_seconds"),
-        pl.col("wait_dt").dt.total_hours(fractional=True).alias("wait_time_hours"),
+    return (
+        lf.with_columns(
+            (
+                pl.col("Start").str.to_datetime(strict=False)
+                - pl.col("Submit").str.to_datetime(strict=False)
+            ).alias("wait_dt")
+        )
+        .with_columns(
+            pl.col("wait_dt").dt.total_seconds().alias("wait_time_seconds"),
+            pl.col("wait_dt").dt.total_hours(fractional=True).alias("wait_time_hours"),
+        )
+        .drop("wait_dt")
+    )
+
+
+def add_job_duration_cols(lf: pl.LazyFrame) -> pl.LazyFrame:
+    # Ajoute une colonne wait_dt qui est un time delta représentant le temps d'attente entre soumission d'un job et son démarrage
+    return (
+        lf.with_columns(
+            (
+                pl.col("End").str.to_datetime(strict=False)
+                - pl.col("Start").str.to_datetime(strict=False)
+            ).alias("duration_dt")
+        )
+        .with_columns(
+            pl.col("duration_dt").dt.total_seconds().alias("job_duration_seconds"),
+        )
+        .drop("duration_dt")
     )
 
 

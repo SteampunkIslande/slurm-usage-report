@@ -27,7 +27,7 @@ from plotjs import PlotJS
 import jinja2 as j2
 import polars as pl
 
-from utils import add_daily_duration, add_wait_time_cols
+from utils import add_daily_duration, add_wait_time_cols, add_job_duration_cols
 from usage_report import generic_report
 
 
@@ -46,109 +46,125 @@ def compute_daily_metrics(
     """
     # Ajouter CPUTime_seconds
     lf = generic_report(lf)
-    # Ajouter deux colonnes: la date demandée (format pl.Date), et la durée de chaque job pendant cette date
+    # Ajouter deux colonnes: la date demandée (format pl.Date, colonne `date`), et la durée de chaque job pendant cette date (colonne `daily_duration_hours`)
     lf = add_daily_duration(lf, date)
 
-    # Filtrer les jobs qui ont tourné ce jour (durée > 0)
-    lf = lf.filter(pl.col("daily_duration_hours") > 0)
+    # Ajoute les colonnes wait_time_seconds et wait_time_hours
     lf = add_wait_time_cols(lf)
+    lf = add_job_duration_cols(lf)
+
+    jobs_aggregations = [
+        (pl.col("TotalCPU_seconds").sum()).alias("CPU.Secondes"),
+        (pl.col("TotalCPU_seconds").sum() / 3600).alias("CPU.Heures"),
+        (
+            (
+                (pl.col("TotalCPU_seconds")).sum()
+                / pl.lit(cluster_capacity["cpu_secondes"])
+            )
+            * 100
+        ).alias("Pourcentage d'utilisation CPU"),
+        ((pl.col("MaxRSS") / 2**30) * pl.col("ElapsedRaw")).sum().alias("GB.Secondes"),
+        (
+            (
+                ((pl.col("MaxRSS") / 2**30) * pl.col("ElapsedRaw")).sum()
+                / pl.lit(cluster_capacity["gb_secondes"])
+            )
+            * 100
+        ).alias("Taux d'occupation de la RAM"),
+        pl.col("wait_time_seconds")
+        .mean()
+        .alias("Temps d'attente moyen en queue (secondes)"),
+        pl.col("wait_time_seconds")
+        .median()
+        .alias("Temps d'attente médian en queue (secondes)"),
+        pl.col("wait_time_seconds")
+        .min()
+        .alias("Temps d'attente minimum en queue (secondes)"),
+        pl.col("wait_time_seconds")
+        .max()
+        .alias("Temps d'attente maximum en queue (secondes)"),
+        pl.col("JobID")
+        .filter(
+            pl.col("Submit").str.to_datetime("%Y-%m-%dT%H:%M:%S").dt.date()
+            == pl.lit(date).str.to_date()
+        )
+        .count()
+        .alias("Jobs soumis"),
+        pl.col("JobID")
+        .filter(
+            pl.col("Start").str.to_datetime("%Y-%m-%dT%H:%M:%S").dt.date()
+            == pl.lit(date).str.to_date()
+        )
+        .count()
+        .alias("Jobs démarrés"),
+        pl.col("JobID")
+        .filter(
+            pl.col("Start").str.to_datetime("%Y-%m-%dT%H:%M:%S").dt.date()
+            == pl.lit(date).str.to_date()
+        )
+        .count()
+        .alias("Jobs terminés"),
+        pl.col("JobID")
+        .filter(pl.col("State") == "FAILED")
+        .count()
+        .alias("Jobs échoués"),
+        pl.col("JobID")
+        .filter(pl.col("State") == "COMPLETED")
+        .count()
+        .alias("Jobs terminés avec succès"),
+        pl.col("JobID")
+        .filter(pl.col("State") == "PREEMPTED")
+        .count()
+        .alias("Jobs préemptés"),
+        pl.col("job_duration_seconds")
+        .mean()
+        .alias("Durée moyenne d'exécution (secondes)"),
+        pl.col("job_duration_seconds")
+        .median()
+        .alias("Durée médiane d'exécution (secondes)"),
+        pl.col("job_duration_seconds")
+        .min()
+        .alias("Durée minimum d'exécution (secondes)"),
+        pl.col("job_duration_seconds")
+        .max()
+        .alias("Durée maximum d'exécution (secondes)"),
+    ]
+
+    job_aggregation_cols = [
+        "CPU.Secondes",
+        "CPU.Heures",
+        "Pourcentage d'utilisation CPU",
+        "GB.Secondes",
+        "Taux d'occupation de la RAM",
+        "Temps d'attente moyen en queue (secondes)",
+        "Temps d'attente médian en queue (secondes)",
+        "Temps d'attente minimum en queue (secondes)",
+        "Temps d'attente maximum en queue (secondes)",
+        "Jobs soumis",
+        "Jobs démarrés",
+        "Jobs terminés",
+        "Jobs terminés avec succès",
+        "Jobs échoués",
+        "Jobs préemptés",
+        "Durée moyenne d'exécution (secondes)",
+        "Durée médiane d'exécution (secondes)",
+        "Durée minimum d'exécution (secondes)",
+        "Durée maximum d'exécution (secondes)",
+    ]
 
     # Grouper par QOS
     lf_qos_grouped = (
         lf.group_by("QOS")
-        .agg(
-            (pl.col("TotalCPU_seconds").sum()).alias("CPU.Secondes"),
-            (pl.col("TotalCPU_seconds").sum() / 3600).alias("CPU.Heures"),
-            (
-                (
-                    (pl.col("TotalCPU_seconds")).sum()
-                    / pl.lit(cluster_capacity["cpu_secondes"])
-                )
-                * 100
-            ).alias("Pourcentage d'utilisation CPU"),
-            ((pl.col("MaxRSS") / 2**30) * pl.col("ElapsedRaw"))
-            .sum()
-            .alias("GB.Secondes"),
-            (
-                (
-                    ((pl.col("MaxRSS") / 2**30) * pl.col("ElapsedRaw")).sum()
-                    / pl.lit(cluster_capacity["gb_secondes"])
-                )
-                * 100
-            ).alias("Taux d'occupation de la RAM"),
-            pl.col("wait_time_seconds")
-            .mean()
-            .alias("Temps d'attente moyen en queue (secondes)"),
-            pl.col("wait_time_seconds")
-            .median()
-            .alias("Temps d'attente médian en queue (secondes)"),
-            pl.col("wait_time_seconds")
-            .min()
-            .alias("Temps d'attente minimum en queue (secondes)"),
-            pl.col("wait_time_seconds")
-            .max()
-            .alias("Temps d'attente maximum en queue (secondes)"),
-        )
+        .agg(*jobs_aggregations)
         .select(
             "QOS",
-            "CPU.Secondes",
-            "CPU.Heures",
-            "Pourcentage d'utilisation CPU",
-            "GB.Secondes",
-            "Taux d'occupation de la RAM",
-            "Temps d'attente moyen en queue (secondes)",
-            "Temps d'attente médian en queue (secondes)",
-            "Temps d'attente minimum en queue (secondes)",
-            "Temps d'attente maximum en queue (secondes)",
+            *job_aggregation_cols,
         )
     )
     lf_global = (
         lf.group_by("date")
-        .agg(
-            (pl.col("TotalCPU_seconds").sum()).alias("CPU.Secondes"),
-            (pl.col("TotalCPU_seconds").sum() / 3600).alias("CPU.Heures"),
-            (
-                (
-                    (pl.col("TotalCPU_seconds")).sum()
-                    / pl.lit(cluster_capacity["cpu_secondes"])
-                )
-                * 100
-            ).alias("Pourcentage d'utilisation CPU"),
-            ((pl.col("MaxRSS") / 2**30) * pl.col("ElapsedRaw"))
-            .sum()
-            .alias("GB.Secondes"),
-            (
-                (
-                    ((pl.col("MaxRSS") / 2**30) * pl.col("ElapsedRaw")).sum()
-                    / pl.lit(cluster_capacity["gb_secondes"])
-                )
-                * 100
-            ).alias("Taux d'occupation de la RAM"),
-            pl.col("wait_time_seconds")
-            .mean()
-            .alias("Temps d'attente moyen en queue (secondes)"),
-            pl.col("wait_time_seconds")
-            .median()
-            .alias("Temps d'attente médian en queue (secondes)"),
-            pl.col("wait_time_seconds")
-            .min()
-            .alias("Temps d'attente minimum en queue (secondes)"),
-            pl.col("wait_time_seconds")
-            .max()
-            .alias("Temps d'attente maximum en queue (secondes)"),
-        )
-        .select(
-            "date",
-            "CPU.Secondes",
-            "CPU.Heures",
-            "Pourcentage d'utilisation CPU",
-            "GB.Secondes",
-            "Taux d'occupation de la RAM",
-            "Temps d'attente moyen en queue (secondes)",
-            "Temps d'attente médian en queue (secondes)",
-            "Temps d'attente minimum en queue (secondes)",
-            "Temps d'attente maximum en queue (secondes)",
-        )
+        .agg(*jobs_aggregations)
+        .select("date", *job_aggregation_cols)
     )
 
     qos_metrics = lf_qos_grouped.collect().to_dicts()

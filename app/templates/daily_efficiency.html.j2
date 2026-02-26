@@ -75,8 +75,24 @@
 </head>
 
 <body>
-    <h1>Rapport d'efficacité du cluster</h1>
-    <h2>Date: {{ date }}</h2>
+    <h1>Rapport d'efficacité du cluster - {{ date }}</h1>
+
+    <h2>Explications</h2>
+    <p>
+        Ce rapport quotidien mesure la charge de travail du cluster.
+        Il rend compte de l'utilisation de deux types de ressources:
+    <ul>
+        <li>La mémoire vive, exprimée en GB.secondes, correspondant au produit entre la quantité totale disponible sur
+            le
+            serveur et la durée d'une journée en secondes. Sont indiqués (1) la valeur totale des consommations connues
+            et (2) le taux d'occupation, rapporté aux capacités totales du cluster.</li>
+        <li>
+            Le temps CPU, exprimé en CPU.secondes, correspondant au produit entre le nombre de CPUs sur l'ensemble du
+            cluster et la durée d'une journée en secondes. Ce qui est indiqué correspond au temps réellement utilisé par
+            l'ensemble des CPUs, en considérant le temps d'attente pour les I/O comme du temps CPU inutile.
+        </li>
+    </ul>
+    </p>
 
     <div class="summary">
         <h3>Statistiques globales</h3>

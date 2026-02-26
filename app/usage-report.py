@@ -438,6 +438,7 @@ def generate_snakemake_efficiency_report(
     output_html: Path,
     job_names: list[str] = None,
     database: Path = None,
+    output_parquet: Path = None,
 ):
 
     if database and input_parquet.exists():
@@ -484,6 +485,9 @@ def generate_snakemake_efficiency_report(
     runtime_box_plot = plot_snakemake_rule_efficicency(relaxed_df, "ElapsedRaw")
 
     lf = aggregate_per_snakemake_rule(lf)
+
+    if output_parquet:
+        lf.sink_parquet(output_parquet)
 
     efficiency_table_mem = (
         lf.select(
@@ -697,7 +701,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--job-names",
         "-n",
         dest="job_names",
-        help="Nom du(des) job(s) SLURM à sélectionner, séparés par des virgules",
+        help="Nom du(des) job(s) SLURM à sélectionner, séparés par des virgules. Obligatoire si l'option -d est spécifiée",
         type=lambda s: s.split(","),
     )
     p_smk.add_argument(
@@ -706,6 +710,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Chemin vers la base de données SACCT maison du cluster (dossier avec les fichiers parquet).\n"
         "Permet de contourner sacct en cherchant directement les données dans les fichiers parquet",
         dest="database",
+        type=Path,
+    )
+    p_smk.add_argument(
+        "--output-parquet",
+        help="Nom du fichier parquet où sauvegarder les données de performance consolidées pour les runs snakemake spécifiés",
         type=Path,
     )
 

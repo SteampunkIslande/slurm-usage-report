@@ -194,6 +194,7 @@
     représentative de ce que le job a réellement consommé, en raison de la fréquence d'échantillonnage de SLURM.
   </p>
 
+
   <p>
     <strong>Interprétation des valeurs :</strong>
   </p>
@@ -240,6 +241,22 @@
   <h2>Efficacité mémoire (représentation graphique)</h2>
   <p class="plot">
     {{ mem_box_plot | safe }}
+  </p>
+
+  <h2>RAM utilisée par Mo d'entrée (table)</h2>
+  <p>
+    Ces statistiques rapportent la RAM utilisée au volume d'entrée (Mo). Elles permettent d'estimer la consommation
+    mémoire en fonction de la taille des données d'entrée pour chaque job.
+    A partir du maximum de cette valeur, qui est en Mo par Mo, vous pouvez directement calculer la ressource mem_mb pour
+    la règle considérée (dans la directive resources: mem_mb=lambda input: input.size_mb * coeff).
+    Le boxplot correspondant permet de voir si cette relation est proportionnelle: plus l'écart-type sera faible et les
+    valeurs min et max rapprochées, plus cette relation est linéaire et corrélée (en première approximation).
+  </p>
+  {{ render_table(efficiency_table_relative_mem, color_thresholds=color_config) }}
+
+  <h2>RAM utilisée par Mo d'entrée (boxplot)</h2>
+  <p class="plot">
+    {{ relative_mem_box_plot | safe }}
   </p>
 
   <h2>Efficacité CPU (%)</h2>
@@ -379,6 +396,23 @@
   <p class="plot">
     {{ runtime_box_plot | safe }}
   </p>
+
+  <h2>Temps par Mo d'entrée</h2>
+  <p>
+    Temps d'exécution rapporté à la taille d'entrée (minutes/Mo). Permet de projeter la durée des jobs en fonction du
+    volume des données initiales.
+  </p>
+  {{ render_table(efficiency_table_relative_runtime, color_thresholds=color_config) }}
+
+  <h2>Temps par Mo d'entrée (boxplot)</h2>
+  <p>
+    Plus ces valeurs sont rapprochées, plus la durée d'exécution est corrélée avec la taille des fichiers d'entrée,
+    et de de façon linéaire (en première approximation).
+  </p>
+  <p class="plot">
+    {{ relative_runtime_box_plot | safe }}
+  </p>
+
 </body>
 
 </html>

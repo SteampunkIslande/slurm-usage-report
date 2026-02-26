@@ -214,23 +214,16 @@ INTERESTING_COLUMNS = [
 ]
 
 
-def color_from_threshold_map(value, thresholds):
-    latest_color = thresholds[0][1]  # Default color if value is below all thresholds
-    for threshold, color in thresholds:
-        if value < threshold:
-            return color
-        latest_color = color
-    return latest_color
-
-
 DEFAULT_CMAP = [
-    (20, "#ff0000"),
-    (60, "#d4a500"),
-    (75, "#ffa500"),
-    (100, "#008000"),
-    (125, "#ffa500"),
-    (150, "#ff0000"),
+    ((0, 20), "#ff0000"),
+    ((21, 60), "#d4a500"),
+    ((61, 75), "#ffa500"),
+    ((76, 100), "#008000"),
+    ((101, 125), "#ffa500"),
+    ((126, 150), "#ff0000"),
 ]
+
+COLOR_MAPS = {"default": DEFAULT_CMAP}
 
 
 def add_daily_duration(lazyframe: pl.LazyFrame, date: str) -> pl.LazyFrame:

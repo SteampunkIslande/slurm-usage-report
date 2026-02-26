@@ -12,11 +12,11 @@ import duckdb as db
 from utils import (
     INTERESTING_COLUMNS,
     USEFUL_COLUMNS,
-    color_from_threshold_map,
     DEFAULT_CMAP,
 )
 
 import jinja2 as j2
+from functools import partial
 
 
 # Première étape: rendre le fichier d'accounting sain
@@ -458,6 +458,23 @@ def add_metrics_relative_to_input_size(
     )
 
 
+def get_color(
+    value: float | int,
+    column_name: str,
+    col_name_to_colmap: dict,
+):
+    if column_name not in col_name_to_colmap:
+        return None
+    col_map = col_name_to_colmap[column_name]
+    if value < col_map[0][0][0]:
+        return col_map[0][1]
+    if value > col_map[len(col_map) - 1][0][1]:
+        return col_map[len(col_map) - 1][1]
+    for (lowerbound, upperbound), color in col_map:
+        if value >= lowerbound and value <= upperbound:
+            return color
+
+
 def generate_snakemake_efficiency_report(
     input_parquet: Path,
     output_html: Path,
@@ -659,7 +676,22 @@ def generate_snakemake_efficiency_report(
     )
     env.filters["format_header"] = lambda t: t.replace("_", "\n")
     # Add filter that takes a list of (threshold, color) pairs and a value, and returns the color corresponding to the first threshold that the value is below
-    env.filters["color_threshold"] = color_from_threshold_map
+    env.filters["get_color"] = partial(
+        get_color,
+        col_name_to_colmap={
+            v: DEFAULT_CMAP
+            for v in [
+                "Efficacité mémoire moyenne",
+                "Efficacité mémoire médiane",
+                "Efficacité mémoire minimum",
+                "Efficacité mémoire maximum",
+                "Efficacité CPU moyenne",
+                "Efficacité CPU médiane",
+                "Efficacité CPU minimum",
+                "Efficacité CPU maximum",
+            ]
+        },
+    )
     template = env.get_template("snakemake_report_template.html.j2")
     output = template.render(
         {
@@ -673,19 +705,6 @@ def generate_snakemake_efficiency_report(
             "efficiency_table_runtime": efficiency_table_runtime,
             "efficiency_table_relative_mem": efficiency_table_relative_mem,
             "efficiency_table_relative_runtime": efficiency_table_relative_runtime,
-            "color_config": {
-                v: DEFAULT_CMAP
-                for v in [
-                    "Efficacité mémoire moyenne",
-                    "Efficacité mémoire médiane",
-                    "Efficacité mémoire minimum",
-                    "Efficacité mémoire maximum",
-                    "Efficacité CPU moyenne",
-                    "Efficacité CPU médiane",
-                    "Efficacité CPU minimum",
-                    "Efficacité CPU maximum",
-                ]
-            },
         }
     )
     with open(output_html, "w") as f:

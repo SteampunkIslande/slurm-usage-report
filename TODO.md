@@ -1,7 +1,7 @@
 # Rapports d'efficacité snakemake
 
-- [ ] Ajouter les métriques temps/input_size et memoire/input_size
-- [ ] Ajouter des explications sur le sens des métriques rapportées à input_size
+- [x] Ajouter les métriques temps/input_size et memoire/input_size
+- [x] Ajouter des explications sur le sens des métriques rapportées à input_size
 
 # Rapport d'efficacité du cluster
 

@@ -129,7 +129,7 @@
 <body>
 
   {# Macro pour générer un tableau #}
-  {% macro render_table(table_data, color_thresholds=None, table_class="dataframe") %}
+  {% macro render_table(table_data, color_map_name="default", table_class="dataframe") %}
   <div class="{{ table_class }}">
     <table>
       <thead>
@@ -149,21 +149,18 @@
           {% for col in table_data.keys() %}
           <td>
             {% set cell_value = table_data[col][row_idx] %}
+            {% set badge_color = cell_value | get_color(col) %}
 
-            {# Parcourir les seuils dans l'ordre décroissant pour obtenir le dernier seuil satisfait #}
-
-            {% if cell_value is number and col in color_thresholds %}
-            {% set badge_color = cell_value | color_threshold(color_thresholds[col]) %}
-
-            {% if badge_color %} <span class="badge" style="background-color: {{ badge_color }};">{{ cell_value |
-              round(3) }}</span>
+            {% if badge_color %}
+            <span class="badge" style="background-color: {{ badge_color }};">
+              {% if cell_value is number %}{{ cell_value | round(3) }}{% else %}{{ cell_value }}{% endif %}
+            </span>
             {% else %}
-            {{ cell_value | round(3) }}
-            {% endif %}
-            {% elif cell_value is number %}
+            {% if cell_value is number %}
             {{ cell_value | round(3) }}
             {% else %}
             {{ cell_value }}
+            {% endif %}
             {% endif %}
           </td>
           {% endfor %}
@@ -236,7 +233,7 @@
     Objectif recommandé : viser une efficacité mémoire comprise entre <strong>80&nbsp;% et 100&nbsp;%</strong>.
   </p>
 
-  {{ render_table(efficiency_table_mem, color_thresholds=color_config) }}
+  {{ render_table(efficiency_table_mem) }}
 
   <h2>Efficacité mémoire (représentation graphique)</h2>
   <p class="plot">
@@ -252,7 +249,7 @@
     Le boxplot correspondant permet de voir si cette relation est proportionnelle: plus l'écart-type sera faible et les
     valeurs min et max rapprochées, plus cette relation est linéaire et corrélée (en première approximation).
   </p>
-  {{ render_table(efficiency_table_relative_mem, color_thresholds=color_config) }}
+  {{ render_table(efficiency_table_relative_mem) }}
 
   <h2>RAM utilisée par Mo d'entrée (boxplot)</h2>
   <p class="plot">
@@ -317,7 +314,7 @@
     Objectif recommandé : viser une efficacité CPU comprise entre <strong>85&nbsp;% et 100&nbsp;%</strong>.
   </p>
 
-  {{ render_table(efficiency_table_cpu, color_thresholds=color_config) }}
+  {{ render_table(efficiency_table_cpu) }}
 
   <h2>Efficacité CPU (représentation graphique)</h2>
   <p class="plot">
@@ -390,7 +387,7 @@
     </li>
   </ul>
 
-  {{ render_table(efficiency_table_runtime, color_thresholds=color_config) }}
+  {{ render_table(efficiency_table_runtime) }}
 
   <h2>Durée d'exécution (représentation graphique)</h2>
   <p class="plot">
@@ -402,7 +399,7 @@
     Temps d'exécution rapporté à la taille d'entrée (minutes/Mo). Permet de projeter la durée des jobs en fonction du
     volume des données initiales.
   </p>
-  {{ render_table(efficiency_table_relative_runtime, color_thresholds=color_config) }}
+  {{ render_table(efficiency_table_relative_runtime) }}
 
   <h2>Temps par Mo d'entrée (boxplot)</h2>
   <p>

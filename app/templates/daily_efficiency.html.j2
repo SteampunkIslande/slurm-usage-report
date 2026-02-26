@@ -145,6 +145,11 @@
     {% if qos_metrics %}
     <div class="summary">
         <h3>Détails par QOS</h3>
+        <p>
+            Les métriques sont également ventilées par QOS (Quality of Service), ce qui permet d'identifier les classes
+            de
+            jobs les plus consommatrices de ressources ou les plus sujettes à des temps d'attente en queue élevés.
+        </p>
         {% for qos_name, qos_data in qos_metrics.items() %}
         <h4>QOS: {{ qos_name }}</h4>
         <table>

@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rapport agrégé du cluster - {from_date} à {to_date}</title>
+    <title>Rapport agrégé du cluster - {{ from_date }} à {{ to_date }}</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -15,32 +15,9 @@
         }
 
         h1,
-        h2 {
+        h2,
+        h3 {
             color: #333;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 20px 0;
-            background-color: white;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-        }
-
-        th,
-        td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #ddd;
-        }
-
-        th {
-            background-color: #4CAF50;
-            color: white;
-        }
-
-        tr:hover {
-            background-color: #f5f5f5;
         }
 
         .summary {
@@ -51,14 +28,45 @@
             margin-bottom: 20px;
         }
 
-        .calendar {
+        .calendar-container {
             text-align: center;
             margin: 20px 0;
         }
 
-        .calendar img {
+        .calendar-container img {
             max-width: 100%;
             height: auto;
+        }
+
+        .legend {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #fafafa;
+            border-radius: 5px;
+        }
+
+        .legend-gradient {
+            width: 200px;
+            height: 20px;
+            background: linear-gradient(to right, #440154, #482878, #3e4a89, #31688e, #26838f, #1f9e89, #35b779, #6ece58, #b5de2b, #fde725);
+            border-radius: 3px;
+            margin: 0 10px;
+        }
+
+        .legend-label {
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            text-align: center;
+            color: #666;
         }
     </style>
 </head>
@@ -68,72 +76,28 @@
     <h2>Période: {{ from_date }} à {{ to_date }}</h2>
 
     <div class="summary">
-        <h3>Statistiques globales de la période</h3>
-        <table>
-            <tr>
-                <th>Métrique</th>
-                <th>Valeur</th>
-            </tr>
-            <tr>
-                <td>Nombre de jours</td>
-                <td>{{ reports | length }}</td>
-            </tr>
-            <tr>
-                <td>Nombre total de jobs</td>
-                <td>{{ total_jobs }}</td>
-            </tr>
-            <tr>
-                <td>Moyenne de jobs par jour</td>
-                <td>{{ avg_jobs_per_day:.1f }}</td>
-            </tr>
-            <tr>
-                <td>Total CPU*heures</td>
-                <td>{{ total_cpu_hours:.2f }}</td>
-            </tr>
-            <tr>
-                <td>Moyenne CPU*heures par jour</td>
-                <td>{{ avg_cpu_hours_per_day:.2f }}</td>
-            </tr>
-            <tr>
-                <td>Total Mémoire GB*heures</td>
-                <td>{{ total_mem_gb_hours:.2f }}</td>
-            </tr>
-            <tr>
-                <td>Temps d'attente moyen</td>
-                <td>{{ format_duration(avg_wait_time) }}</td>
-            </tr>
-        </table>
+        <p><strong>Nombre de jours avec données:</strong> {{ num_days }}</p>
     </div>
 
+    {% for metric in calendars %}
     <div class="summary">
-        <h3>Calendrier d'utilisation de la mémoire (GB*heures)</h3>
-        <div class="calendar">
-            {{ calendar_html | safe }}
+        <h3>{{ metric.title }}</h3>
+        <div class="calendar-container">
+            {{ metric.calendar_html | safe }}
         </div>
+        <div class="legend">
+            <span class="legend-label">{{ metric.min_value | round(2) }}%</span>
+            <div class="legend-gradient"></div>
+            <span class="legend-label">{{ metric.max_value | round(2) }}%</span>
+        </div>
+        <p style="text-align: center; color: #666; font-size: 0.9em;">
+            Colormap: Viridis (du violet foncé pour les valeurs basses au jaune pour les valeurs hautes)
+        </p>
     </div>
-
-    <div class="summary">
-        <h3>Détail par jour</h3>
-        <table>
-            <tr>
-                <th>Date</th>
-                <th>Jobs</th>
-                <th>CPU*heures</th>
-                <th>Mémoire GB*heures</th>
-            </tr>
-            {% for r in reports %}
-            <tr>
-                <td>{{ r["date"] }}</td>
-                <td>{{ r["job_count"] }}</td>
-                <td>{{ r["total_cpu_hours"]:.2f }}</td>
-                <td>{{ r["total_memory_gb_hours"]:.2f }}</td>
-            </tr>
-            {% endfor %}
-        </table>
-    </div>
+    {% endfor %}
 
     <footer>
-        <p><em>Rapport généré automatiquement le {{ datetime.now().strftime('%Y-%m-%d %H:%M:%S') }}</em></p>
+        <p><em>Rapport généré automatiquement le {{ generation_time }}</em></p>
     </footer>
 </body>
 

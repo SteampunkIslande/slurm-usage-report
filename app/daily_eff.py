@@ -22,11 +22,11 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
+from plotjs import PlotJS
 
 import jinja2 as j2
 import polars as pl
 
-from calendar_plot import plot_daily_efficiency
 from utils import add_daily_duration, add_wait_time_cols
 from usage_report import generic_report
 
@@ -263,189 +263,136 @@ def generate_daily_html_report(metrics: dict, date: str = None) -> str:
     return html
 
 
-def load_json_reports(database: Path, from_date: str, to_date: str) -> list[dict]:
-    """
-    Charge les rapports JSON entre deux dates.
-
-    Args:
-        database: Chemin vers le dossier contenant les fichiers JSON
-        from_date: Date de début au format 'YYYY-MM-DD'
-        to_date: Date de fin au format 'YYYY-MM-DD'
-
-    Returns:
-        Liste des métriques chargées depuis les fichiers JSON
-    """
-    start = datetime.strptime(from_date, "%Y-%m-%d").date()
-    end = datetime.strptime(to_date, "%Y-%m-%d").date()
-
-    reports = []
-    current = start
-
-    while current <= end:
-        json_file = database / f"{current.strftime('%Y-%m-%d')}.json"
-        if json_file.exists():
-            with open(json_file) as f:
-                reports.append(json.load(f))
-        else:
-            print(f"Il manque {json_file}", file=sys.stderr)
-        current += timedelta(days=1)
-
-    return reports
-
-
 def generate_aggregate_report(
-    from_date: str, to_date: str, database: Path, output: Path
+    from_date: str, to_date: str, database: Path, output: Path, no_js: bool = False
 ):
     """
     Génère un rapport agrégé avec calendriers pour une période donnée.
 
-    Args:
-        from_date: Date de début au format 'YYYY-MM-DD'
-        to_date: Date de fin au format 'YYYY-MM-DD'
-        database: Chemin vers la base de données
-        output: Chemin du fichier HTML de sortie
+    Charge les fichiers JSON existants dans la base de données et génère
+    un calendrier par métrique globale demandée.
     """
-    # Charger les rapports JSON existants
-    reports = load_json_reports(database, from_date, to_date)
+    import io
+    import base64
+    import matplotlib.pyplot as plt
+    import dayplot as dp
 
-    # Créer un DataFrame pour les calendriers
-    dates = [r["date"] for r in reports]
-    cpu_hours = [r["total_cpu_hours"] for r in reports]
-    mem_gb_hours = [r["total_memory_gb_hours"] for r in reports]
-    job_counts = [r["job_count"] for r in reports]
-
-    # Calculer l'efficacité mémoire (placeholder - à adapter selon vos besoins)
-    # Pour l'instant, on utilise les GB*heures comme métrique
-    df_calendar = pl.DataFrame(
+    # Métriques à afficher (un calendrier par métrique)
+    metrics_config = [
         {
-            "Dates": dates,
-            "MemoryEfficiency": mem_gb_hours,
-            "CPUHours": cpu_hours,
-            "JobCount": job_counts,
-        }
+            "key": "Taux d'occupation de la RAM",
+            "title": "Taux d'occupation de la RAM (% de la capacité totale en GB.secondes)",
+        },
+        {
+            "key": "Pourcentage d'utilisation CPU",
+            "title": "Taux d'utilisation des CPUs (% de la capacité totale en CPU.secondes)",
+        },
+    ]
+
+    # Charger les rapports JSON existants
+    start = datetime.strptime(from_date, "%Y-%m-%d").date()
+    end = datetime.strptime(to_date, "%Y-%m-%d").date()
+
+    dates = []
+    reports_data = []
+    current = start
+
+    while current <= end:
+        date_str = current.strftime("%Y-%m-%d")
+        json_file = database / f"{date_str}.json"
+        if json_file.exists():
+            with open(json_file) as f:
+                data = json.load(f)
+                # On ne garde que les métriques globales
+                if "global" in data:
+                    dates.append(date_str)
+                    reports_data.append(data["global"])
+                else:
+                    print(f"Rapport global manquant dans {json_file}", file=sys.stderr)
+                    dates.append(date_str)
+                    reports_data.append({})  # Valeurs vides pour les jours sans données
+        else:
+            print(f"Fichier JSON manquant: {json_file}", file=sys.stderr)
+            dates.append(date_str)
+            reports_data.append({})  # Valeurs vides pour les jours sans données
+        current += timedelta(days=1)
+
+    if not reports_data:
+        print("Aucune donnée trouvée pour la période demandée.", file=sys.stderr)
+        sys.exit(1)
+
+    # Générer un calendrier pour chaque métrique
+    calendars = []
+    for metric_conf in metrics_config:
+        metric_key = metric_conf["key"]
+        metric_title = metric_conf["title"]
+
+        # Extraire les valeurs pour cette métrique
+        values = [r.get(metric_key, 0.0) for r in reports_data]
+
+        # Créer le DataFrame pour le calendrier
+        df_calendar = pl.DataFrame(
+            {
+                "Dates": dates,
+                "Values": values,
+            }
+        ).with_columns(pl.col("Dates").str.to_date("%Y-%m-%d"))
+
+        # Générer le calendrier avec matplotlib/dayplot
+        fig, ax = plt.subplots(figsize=(15, 6))
+        dp.calendar(
+            dates=df_calendar["Dates"],
+            values=df_calendar["Values"],
+            month_grid=True,
+            ax=ax,
+        )
+
+        if no_js:
+            # Convertir en base64 (pour avoir une image statique, compatible avec les clients mail)
+            s = io.BytesIO()
+            fig.savefig(s, format="png", bbox_inches="tight")
+            plt.close(fig)
+            s.seek(0)
+            img_base64 = base64.b64encode(s.getvalue()).decode("utf-8")
+            calendar_html = f'<img src="data:image/png;base64,{img_base64}" />'
+        else:
+            PlotJS._favicon_path = ""
+            PlotJS._document_title = ""
+            calendar_html = (
+                PlotJS(fig)
+                .add_tooltip(
+                    labels=df_calendar.with_columns(
+                        pl.concat_str(
+                            df_calendar["Values"].round(2).cast(pl.String), pl.lit(" %")
+                        )
+                    )["Values"],
+                    hover_nearest=True,
+                )
+                .as_html()
+            )
+
+        calendars.append(
+            {
+                "title": metric_title,
+                "calendar_html": calendar_html,
+                "min_value": min(values) if values else 0,
+                "max_value": max(values) if values else 100,
+            }
+        )
+
+    # Charger et rendre le template Jinja2
+    env = j2.Environment(
+        loader=j2.FileSystemLoader(os.path.join(os.path.dirname(__file__), "templates"))
     )
+    template = env.get_template("aggregated_efficiency.html.j2")
 
-    # Convertir les dates en format datetime
-    df_calendar = df_calendar.with_columns(pl.col("Dates").str.to_date("%Y-%m-%d"))
-
-    # Générer le calendrier
-    calendar_html = plot_daily_efficiency(df_calendar)
-
-    # Calculer les statistiques agrégées
-    total_jobs = sum(job_counts)
-    total_cpu_hours = sum(cpu_hours)
-    total_mem_gb_hours = sum(mem_gb_hours)
-    avg_jobs_per_day = total_jobs / len(reports) if reports else 0
-    avg_cpu_hours_per_day = total_cpu_hours / len(reports) if reports else 0
-
-    # Agréger les temps d'attente
-    all_wait_times = []
-    for r in reports:
-        if r.get("wait_time_stats") and "mean_seconds" in r["wait_time_stats"]:
-            all_wait_times.append(r["wait_time_stats"]["mean_seconds"])
-
-    avg_wait_time = sum(all_wait_times) / len(all_wait_times) if all_wait_times else 0
-
-    html = f"""<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rapport agrégé du cluster - {from_date} à {to_date}</title>
-    <style>
-        body {{
-            font-family: Arial, sans-serif;
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #f5f5f5;
-        }}
-        h1, h2 {{
-            color: #333;
-        }}
-        table {{
-            width: 100%;
-            border-collapse: collapse;
-            margin: 20px 0;
-            background-color: white;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }}
-        th, td {{
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #ddd;
-        }}
-        th {{
-            background-color: #4CAF50;
-            color: white;
-        }}
-        tr:hover {{
-            background-color: #f5f5f5;
-        }}
-        .summary {{
-            background-color: white;
-            padding: 20px;
-            border-radius: 5px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-        }}
-        .calendar {{
-            text-align: center;
-            margin: 20px 0;
-        }}
-        .calendar img {{
-            max-width: 100%;
-            height: auto;
-        }}
-    </style>
-</head>
-<body>
-    <h1>Rapport agrégé d'efficacité du cluster</h1>
-    <h2>Période: {from_date} à {to_date}</h2>
-
-    <div class="summary">
-        <h3>Statistiques globales de la période</h3>
-        <table>
-            <tr>
-                <th>Métrique</th>
-                <th>Valeur</th>
-            </tr>
-            <tr><td>Nombre de jours</td><td>{len(reports)}</td></tr>
-            <tr><td>Nombre total de jobs</td><td>{total_jobs}</td></tr>
-            <tr><td>Moyenne de jobs par jour</td><td>{avg_jobs_per_day:.1f}</td></tr>
-            <tr><td>Total CPU*heures</td><td>{total_cpu_hours:.2f}</td></tr>
-            <tr><td>Moyenne CPU*heures par jour</td><td>{avg_cpu_hours_per_day:.2f}</td></tr>
-            <tr><td>Total Mémoire GB*heures</td><td>{total_mem_gb_hours:.2f}</td></tr>
-            <tr><td>Temps d'attente moyen</td><td>{format_duration(avg_wait_time)}</td></tr>
-        </table>
-    </div>
-
-    <div class="summary">
-        <h3>Calendrier d'utilisation de la mémoire (GB*heures)</h3>
-        <div class="calendar">
-            {calendar_html}
-        </div>
-    </div>
-
-    <div class="summary">
-        <h3>Détail par jour</h3>
-        <table>
-            <tr>
-                <th>Date</th>
-                <th>Jobs</th>
-                <th>CPU*heures</th>
-                <th>Mémoire GB*heures</th>
-            </tr>
-            {"".join(f'<tr><td>{r["date"]}</td><td>{r["job_count"]}</td><td>{r["total_cpu_hours"]:.2f}</td><td>{r["total_memory_gb_hours"]:.2f}</td></tr>' for r in reports)}
-        </table>
-    </div>
-
-    <footer>
-        <p><em>Rapport généré automatiquement le {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</em></p>
-    </footer>
-</body>
-</html>
-"""
+    html = template.render(
+        from_date=from_date,
+        to_date=to_date,
+        num_days=len(reports_data),
+        calendars=calendars,
+        generation_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    )
 
     with open(output, "w") as f:
         f.write(html)
@@ -522,6 +469,11 @@ Exemples:
         type=Path,
         required=True,
         help="Chemin du fichier HTML de sortie",
+    )
+    p_aggregate.add_argument(
+        "--no-js",
+        action="store_true",
+        help="Générer des calendriers statiques sans JavaScript (images PNG). Utile pour les clients mail ne supportant pas le JS.",
     )
 
     return parser

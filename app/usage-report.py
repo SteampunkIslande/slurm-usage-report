@@ -602,7 +602,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     # csv -> parquet
     p_csv = subparsers.add_parser(
-        "csv_to_parquet", help="Convertir un fichier CSV en Parquet"
+        "csv_to_parquet",
+        help="Convertir un fichier CSV en Parquet. Très basique, possibilité de spécifier le séparateur "
+        "et le nombre de colonnes attendues. Avec l'option --verbose, affiche dans stderr le nombre de lignes ignorées.",
     )
     p_csv.set_defaults(func=save_to_parquet)
     p_csv.add_argument(

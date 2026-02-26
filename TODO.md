@@ -5,6 +5,6 @@
 
 # Rapport d'efficacité du cluster
 
-- [ ] Ajouter un script python (ou un point d'entrée dans la CLI de usage-report.py) qui permet de générer un calendrier de l'utilisation du cluster (calcule l'efficacité journalière du cluster)
+- [ ] Ajouter un script python (ou un point d'entrée dans la CLI de usage_report.py) qui permet de générer un calendrier de l'utilisation du cluster (calcule l'efficacité journalière du cluster)
 - [ ] Ajouter un script python qui génère un rapport quotidien de l'utilisation du cluster: taux d'occupation de la mémoire (en % de la capacité totale exprimée en GB*jour). Penser également à ajouter le temps d'attente min/max/médian/moyen dans le rapport quotidien.
 - [ ] Le rapport quotidien du cluster pourrait se trouver sous la forme intermédiaire d'un JSON, qui permettrait d'alimenter à la fois le calendrier et le rapport quotidien détaillé.

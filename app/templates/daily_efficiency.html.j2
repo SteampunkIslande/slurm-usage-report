@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rapport d'efficacité du cluster - {date}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+
+        h1,
+        h2 {
+            color: #333;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background-color: white;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        th,
+        td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        th {
+            background-color: #4CAF50;
+            color: white;
+        }
+
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+
+        .summary {
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Rapport d'efficacité du cluster</h1>
+    <h2>Date: {{date}}</h2>
+
+    <div class="summary">
+        <h3>Statistiques globales</h3>
+        <table>
+            <tr>
+                <th>Métrique</th>
+                <th>Valeur</th>
+            </tr>
+            {{ global_stats_rows | safe }}
+        </table>
+    </div>
+
+    {% if qos_rows %}
+    <div class="summary">
+        <h3>Temps d'attente par QOS</h3>
+        <table>
+            <tr>
+                <th>QOS</th>
+                <th>Nombre de jobs</th>
+                <th>Min</th>
+                <th>Max</th>
+                <th>Moyen</th>
+                <th>Médian</th>
+            </tr>
+            {{ qos_rows | safe }}
+        </table>
+    </div>
+    {% endif %}
+
+    <footer>
+        <p><em>Rapport généré automatiquement le {{ datetime.now().strftime('%Y-%m-%d %H:%M:%S') }}</em></p>
+    </footer>
+</body>
+
+</html>

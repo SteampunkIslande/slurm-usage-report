@@ -194,7 +194,7 @@ def aggregate_per_snakemake_rule(lf: pl.LazyFrame) -> pl.LazyFrame:
 
 def parse_total_cpu_col(lf: pl.LazyFrame) -> pl.LazyFrame:
     # Calcul de l'efficacité CPU: TotalCPU / (ElapsedRaw * AllocCPUS) * 100
-    # TotalCPU est le temps CPU utilisateur en secondes
+    # TotalCPU est le temps CPU (utilisateur + système) en secondes
     # Formats possibles: HH:MM:SS, MM:SS.ms, JJ-HH:MM:SS
 
     lf = lf.with_columns(
@@ -277,7 +277,7 @@ def generic_report(lf: pl.LazyFrame) -> pl.LazyFrame:
     lf = lf.with_columns(
         (
             pl.col("TotalCPU_seconds")
-            .truediv(pl.col("ElapsedRaw") * pl.col("AllocCPUS"))
+            .truediv(pl.col("CPUTimeRAW"))
             .fill_nan(0)
             .mul(100)
         ).alias("CPUEfficiencyPercent")

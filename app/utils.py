@@ -226,10 +226,23 @@ DEFAULT_CMAP = [
 COLOR_MAPS = {"default": DEFAULT_CMAP}
 
 
+def add_wait_time_cols(lf: pl.LazyFrame) -> pl.LazyFrame:
+    # Ajoute une colonne wait_dt qui est un time delta représentant le temps d'attente entre soumission d'un job et son démarrage
+    return lf.with_columns(
+        (pl.col("Start").str.to_datetime() - pl.col("Submit").str.to_datetime()).alias(
+            "wait_dt"
+        )
+    ).with_columns(
+        pl.col("wait_dt").dt.total_seconds().alias("wait_time_seconds"),
+        pl.col("wait_dt").dt.total_hours(fractional=True).alias("wait_time_hours"),
+    )
+
+
 def add_daily_duration(lazyframe: pl.LazyFrame, date: str) -> pl.LazyFrame:
     """
     Ajoute une colonne 'daily_duration_hours' qui contient la durée (en heures)
     pendant laquelle un job SLURM a tourné sur une journée spécifique.
+    Ajoute également une colonne avec la date demandée
 
     Args:
         lazyframe: LazyFrame Polars contenant les données sacct (avec les colonnes 'Start' et 'End')
@@ -303,4 +316,6 @@ def add_daily_duration(lazyframe: pl.LazyFrame, date: str) -> pl.LazyFrame:
         .alias("daily_duration_hours")
     )
 
-    return lazyframe.with_columns(daily_duration)
+    date_col = pl.lit(date).str.to_date("%Y-%m-%d") if isinstance(date, str) else date
+
+    return lazyframe.with_columns(daily_duration, date_col)

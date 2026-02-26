@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rapport agrégé du cluster - {from_date} à {to_date}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+
+        h1,
+        h2 {
+            color: #333;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background-color: white;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        th,
+        td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        th {
+            background-color: #4CAF50;
+            color: white;
+        }
+
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+
+        .summary {
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        .calendar {
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .calendar img {
+            max-width: 100%;
+            height: auto;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Rapport agrégé d'efficacité du cluster</h1>
+    <h2>Période: {{ from_date }} à {{ to_date }}</h2>
+
+    <div class="summary">
+        <h3>Statistiques globales de la période</h3>
+        <table>
+            <tr>
+                <th>Métrique</th>
+                <th>Valeur</th>
+            </tr>
+            <tr>
+                <td>Nombre de jours</td>
+                <td>{{ reports | length }}</td>
+            </tr>
+            <tr>
+                <td>Nombre total de jobs</td>
+                <td>{{ total_jobs }}</td>
+            </tr>
+            <tr>
+                <td>Moyenne de jobs par jour</td>
+                <td>{{ avg_jobs_per_day:.1f }}</td>
+            </tr>
+            <tr>
+                <td>Total CPU*heures</td>
+                <td>{{ total_cpu_hours:.2f }}</td>
+            </tr>
+            <tr>
+                <td>Moyenne CPU*heures par jour</td>
+                <td>{{ avg_cpu_hours_per_day:.2f }}</td>
+            </tr>
+            <tr>
+                <td>Total Mémoire GB*heures</td>
+                <td>{{ total_mem_gb_hours:.2f }}</td>
+            </tr>
+            <tr>
+                <td>Temps d'attente moyen</td>
+                <td>{{ format_duration(avg_wait_time) }}</td>
+            </tr>
+        </table>
+    </div>
+
+    <div class="summary">
+        <h3>Calendrier d'utilisation de la mémoire (GB*heures)</h3>
+        <div class="calendar">
+            {{ calendar_html | safe }}
+        </div>
+    </div>
+
+    <div class="summary">
+        <h3>Détail par jour</h3>
+        <table>
+            <tr>
+                <th>Date</th>
+                <th>Jobs</th>
+                <th>CPU*heures</th>
+                <th>Mémoire GB*heures</th>
+            </tr>
+            {% for r in reports %}
+            <tr>
+                <td>{{ r["date"] }}</td>
+                <td>{{ r["job_count"] }}</td>
+                <td>{{ r["total_cpu_hours"]:.2f }}</td>
+                <td>{{ r["total_memory_gb_hours"]:.2f }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+
+    <footer>
+        <p><em>Rapport généré automatiquement le {{ datetime.now().strftime('%Y-%m-%d %H:%M:%S') }}</em></p>
+    </footer>
+</body>
+
+</html>

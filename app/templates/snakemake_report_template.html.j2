@@ -394,14 +394,14 @@
     {{ runtime_box_plot | safe }}
   </p>
 
-  <h2>Temps par Mo d'entrée</h2>
+  <h2>Durée d'exécution par Mo d'entrée</h2>
   <p>
     Temps d'exécution rapporté à la taille d'entrée (minutes/Mo). Permet de projeter la durée des jobs en fonction du
     volume des données initiales.
   </p>
   {{ render_table(efficiency_table_relative_runtime) }}
 
-  <h2>Temps par Mo d'entrée (boxplot)</h2>
+  <h2>Durée d'exécution par Mo d'entrée (boxplot)</h2>
   <p>
     Plus ces valeurs sont rapprochées, plus la durée d'exécution est corrélée avec la taille des fichiers d'entrée,
     et de de façon linéaire (en première approximation).

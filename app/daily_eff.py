@@ -54,7 +54,7 @@ def compute_daily_metrics(
     lf = add_wait_time_cols(lf)
 
     # Grouper par QOS
-    lf = (
+    lf_qos_grouped = (
         lf.group_by("QOS")
         .agg(
             (pl.col("TotalCPU_seconds").sum()).alias("CPU.Secondes"),
@@ -102,10 +102,68 @@ def compute_daily_metrics(
             "Temps d'attente maximum en queue (secondes)",
         )
     )
+    lf_global = (
+        lf.group_by("date")
+        .agg(
+            (pl.col("TotalCPU_seconds").sum()).alias("CPU.Secondes"),
+            (pl.col("TotalCPU_seconds").sum() / 3600).alias("CPU.Heures"),
+            (
+                (
+                    (pl.col("TotalCPU_seconds")).sum()
+                    / pl.lit(cluster_capacity["cpu_secondes"])
+                )
+                * 100
+            ).alias("Pourcentage d'utilisation CPU"),
+            ((pl.col("MaxRSS") / 2**30) * pl.col("ElapsedRaw"))
+            .sum()
+            .alias("GB.Secondes"),
+            (
+                (
+                    ((pl.col("MaxRSS") / 2**30) * pl.col("ElapsedRaw")).sum()
+                    / pl.lit(cluster_capacity["gb_secondes"])
+                )
+                * 100
+            ).alias("Taux d'occupation de la RAM"),
+            pl.col("wait_time_seconds")
+            .mean()
+            .alias("Temps d'attente moyen en queue (secondes)"),
+            pl.col("wait_time_seconds")
+            .median()
+            .alias("Temps d'attente médian en queue (secondes)"),
+            pl.col("wait_time_seconds")
+            .min()
+            .alias("Temps d'attente minimum en queue (secondes)"),
+            pl.col("wait_time_seconds")
+            .max()
+            .alias("Temps d'attente maximum en queue (secondes)"),
+        )
+        .select(
+            "date",
+            "CPU.Secondes",
+            "CPU.Heures",
+            "Pourcentage d'utilisation CPU",
+            "GB.Secondes",
+            "Taux d'occupation de la RAM",
+            "Temps d'attente moyen en queue (secondes)",
+            "Temps d'attente médian en queue (secondes)",
+            "Temps d'attente minimum en queue (secondes)",
+            "Temps d'attente maximum en queue (secondes)",
+        )
+    )
 
-    metrics = lf.collect().to_dicts()
+    qos_metrics = lf_qos_grouped.collect().to_dicts()
+    global_metrics = lf_global.collect().to_dicts()
     # Renvoie un dictionnaire de la forme: {"urgent":{"Temps moyen":15315,...}}
-    return {row["QOS"]: {k: v for k, v in row.items() if k != "QOS"} for row in metrics}
+    return {
+        **{
+            row["QOS"]: {k: v for k, v in row.items() if k != "QOS"}
+            for row in qos_metrics
+        },
+        **{
+            "global": {k: v for k, v in row.items() if k != "date"}
+            for row in global_metrics
+        },
+    }
 
 
 def generate_daily_report(
@@ -144,7 +202,7 @@ def generate_daily_report(
     print(f"Métriques sauvegardées dans {json_path}", file=sys.stderr)
 
     # Générer le rapport HTML
-    html_content = generate_daily_html_report(metrics)
+    html_content = generate_daily_html_report(metrics, date)
 
     with open(output, "w") as f:
         f.write(html_content)
@@ -167,12 +225,17 @@ def format_duration(seconds: float) -> str:
         return f"{secs}s"
 
 
-def generate_daily_html_report(metrics: dict) -> str:
+def generate_daily_html_report(metrics: dict, date: str = None) -> str:
     """
     Génère le contenu HTML du rapport quotidien (sans JavaScript, envoyable par mail).
 
     Args:
-        metrics: Dictionnaire des métriques calculées
+        metrics: Dictionnaire des métriques calculées, de la forme:
+            {
+                "global": {"CPU.Heures": ..., "Taux d'occupation de la RAM": ..., ...},
+                "qos_name": {"CPU.Heures": ..., "Taux d'occupation de la RAM": ..., ...}
+            }
+        date: Date du rapport au format 'YYYY-MM-DD'
 
     Returns:
         Contenu HTML du rapport
@@ -181,9 +244,21 @@ def generate_daily_html_report(metrics: dict) -> str:
     env = j2.Environment(
         loader=j2.FileSystemLoader(os.path.join(os.path.dirname(__file__), "templates"))
     )
+    env.filters["format_duration"] = format_duration
     template = env.get_template("daily_efficiency.html.j2")
 
-    html = template.render()
+    # Extraire les métriques globales
+    global_metrics = metrics.get("global", {})
+
+    # Créer un dictionnaire des métriques par QOS (sans "global")
+    qos_metrics = {k: v for k, v in metrics.items() if k != "global"}
+
+    html = template.render(
+        date=date or "N/A",
+        global_metrics=global_metrics,
+        qos_metrics=qos_metrics,
+        generation_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    )
 
     return html
 
@@ -218,164 +293,164 @@ def load_json_reports(database: Path, from_date: str, to_date: str) -> list[dict
     return reports
 
 
-# def generate_aggregate_report(
-#     from_date: str, to_date: str, database: Path, output: Path
-# ):
-#     """
-#     Génère un rapport agrégé avec calendriers pour une période donnée.
+def generate_aggregate_report(
+    from_date: str, to_date: str, database: Path, output: Path
+):
+    """
+    Génère un rapport agrégé avec calendriers pour une période donnée.
 
-#     Args:
-#         from_date: Date de début au format 'YYYY-MM-DD'
-#         to_date: Date de fin au format 'YYYY-MM-DD'
-#         database: Chemin vers la base de données
-#         output: Chemin du fichier HTML de sortie
-#     """
-#     # Charger les rapports JSON existants
-#     reports = load_json_reports(database, from_date, to_date)
+    Args:
+        from_date: Date de début au format 'YYYY-MM-DD'
+        to_date: Date de fin au format 'YYYY-MM-DD'
+        database: Chemin vers la base de données
+        output: Chemin du fichier HTML de sortie
+    """
+    # Charger les rapports JSON existants
+    reports = load_json_reports(database, from_date, to_date)
 
-#     # Créer un DataFrame pour les calendriers
-#     dates = [r["date"] for r in reports]
-#     cpu_hours = [r["total_cpu_hours"] for r in reports]
-#     mem_gb_hours = [r["total_memory_gb_hours"] for r in reports]
-#     job_counts = [r["job_count"] for r in reports]
+    # Créer un DataFrame pour les calendriers
+    dates = [r["date"] for r in reports]
+    cpu_hours = [r["total_cpu_hours"] for r in reports]
+    mem_gb_hours = [r["total_memory_gb_hours"] for r in reports]
+    job_counts = [r["job_count"] for r in reports]
 
-#     # Calculer l'efficacité mémoire (placeholder - à adapter selon vos besoins)
-#     # Pour l'instant, on utilise les GB*heures comme métrique
-#     df_calendar = pl.DataFrame(
-#         {
-#             "Dates": dates,
-#             "MemoryEfficiency": mem_gb_hours,
-#             "CPUHours": cpu_hours,
-#             "JobCount": job_counts,
-#         }
-#     )
+    # Calculer l'efficacité mémoire (placeholder - à adapter selon vos besoins)
+    # Pour l'instant, on utilise les GB*heures comme métrique
+    df_calendar = pl.DataFrame(
+        {
+            "Dates": dates,
+            "MemoryEfficiency": mem_gb_hours,
+            "CPUHours": cpu_hours,
+            "JobCount": job_counts,
+        }
+    )
 
-#     # Convertir les dates en format datetime
-#     df_calendar = df_calendar.with_columns(pl.col("Dates").str.to_date("%Y-%m-%d"))
+    # Convertir les dates en format datetime
+    df_calendar = df_calendar.with_columns(pl.col("Dates").str.to_date("%Y-%m-%d"))
 
-#     # Générer le calendrier
-#     calendar_html = plot_daily_efficiency(df_calendar)
+    # Générer le calendrier
+    calendar_html = plot_daily_efficiency(df_calendar)
 
-#     # Calculer les statistiques agrégées
-#     total_jobs = sum(job_counts)
-#     total_cpu_hours = sum(cpu_hours)
-#     total_mem_gb_hours = sum(mem_gb_hours)
-#     avg_jobs_per_day = total_jobs / len(reports) if reports else 0
-#     avg_cpu_hours_per_day = total_cpu_hours / len(reports) if reports else 0
+    # Calculer les statistiques agrégées
+    total_jobs = sum(job_counts)
+    total_cpu_hours = sum(cpu_hours)
+    total_mem_gb_hours = sum(mem_gb_hours)
+    avg_jobs_per_day = total_jobs / len(reports) if reports else 0
+    avg_cpu_hours_per_day = total_cpu_hours / len(reports) if reports else 0
 
-#     # Agréger les temps d'attente
-#     all_wait_times = []
-#     for r in reports:
-#         if r.get("wait_time_stats") and "mean_seconds" in r["wait_time_stats"]:
-#             all_wait_times.append(r["wait_time_stats"]["mean_seconds"])
+    # Agréger les temps d'attente
+    all_wait_times = []
+    for r in reports:
+        if r.get("wait_time_stats") and "mean_seconds" in r["wait_time_stats"]:
+            all_wait_times.append(r["wait_time_stats"]["mean_seconds"])
 
-#     avg_wait_time = sum(all_wait_times) / len(all_wait_times) if all_wait_times else 0
+    avg_wait_time = sum(all_wait_times) / len(all_wait_times) if all_wait_times else 0
 
-#     html = f"""<!DOCTYPE html>
-# <html lang="fr">
-# <head>
-#     <meta charset="UTF-8">
-#     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-#     <title>Rapport agrégé du cluster - {from_date} à {to_date}</title>
-#     <style>
-#         body {{
-#             font-family: Arial, sans-serif;
-#             max-width: 1200px;
-#             margin: 0 auto;
-#             padding: 20px;
-#             background-color: #f5f5f5;
-#         }}
-#         h1, h2 {{
-#             color: #333;
-#         }}
-#         table {{
-#             width: 100%;
-#             border-collapse: collapse;
-#             margin: 20px 0;
-#             background-color: white;
-#             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-#         }}
-#         th, td {{
-#             padding: 12px;
-#             text-align: left;
-#             border-bottom: 1px solid #ddd;
-#         }}
-#         th {{
-#             background-color: #4CAF50;
-#             color: white;
-#         }}
-#         tr:hover {{
-#             background-color: #f5f5f5;
-#         }}
-#         .summary {{
-#             background-color: white;
-#             padding: 20px;
-#             border-radius: 5px;
-#             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-#             margin-bottom: 20px;
-#         }}
-#         .calendar {{
-#             text-align: center;
-#             margin: 20px 0;
-#         }}
-#         .calendar img {{
-#             max-width: 100%;
-#             height: auto;
-#         }}
-#     </style>
-# </head>
-# <body>
-#     <h1>Rapport agrégé d'efficacité du cluster</h1>
-#     <h2>Période: {from_date} à {to_date}</h2>
+    html = f"""<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rapport agrégé du cluster - {from_date} à {to_date}</title>
+    <style>
+        body {{
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }}
+        h1, h2 {{
+            color: #333;
+        }}
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background-color: white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }}
+        th, td {{
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }}
+        th {{
+            background-color: #4CAF50;
+            color: white;
+        }}
+        tr:hover {{
+            background-color: #f5f5f5;
+        }}
+        .summary {{
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }}
+        .calendar {{
+            text-align: center;
+            margin: 20px 0;
+        }}
+        .calendar img {{
+            max-width: 100%;
+            height: auto;
+        }}
+    </style>
+</head>
+<body>
+    <h1>Rapport agrégé d'efficacité du cluster</h1>
+    <h2>Période: {from_date} à {to_date}</h2>
 
-#     <div class="summary">
-#         <h3>Statistiques globales de la période</h3>
-#         <table>
-#             <tr>
-#                 <th>Métrique</th>
-#                 <th>Valeur</th>
-#             </tr>
-#             <tr><td>Nombre de jours</td><td>{len(reports)}</td></tr>
-#             <tr><td>Nombre total de jobs</td><td>{total_jobs}</td></tr>
-#             <tr><td>Moyenne de jobs par jour</td><td>{avg_jobs_per_day:.1f}</td></tr>
-#             <tr><td>Total CPU*heures</td><td>{total_cpu_hours:.2f}</td></tr>
-#             <tr><td>Moyenne CPU*heures par jour</td><td>{avg_cpu_hours_per_day:.2f}</td></tr>
-#             <tr><td>Total Mémoire GB*heures</td><td>{total_mem_gb_hours:.2f}</td></tr>
-#             <tr><td>Temps d'attente moyen</td><td>{format_duration(avg_wait_time)}</td></tr>
-#         </table>
-#     </div>
+    <div class="summary">
+        <h3>Statistiques globales de la période</h3>
+        <table>
+            <tr>
+                <th>Métrique</th>
+                <th>Valeur</th>
+            </tr>
+            <tr><td>Nombre de jours</td><td>{len(reports)}</td></tr>
+            <tr><td>Nombre total de jobs</td><td>{total_jobs}</td></tr>
+            <tr><td>Moyenne de jobs par jour</td><td>{avg_jobs_per_day:.1f}</td></tr>
+            <tr><td>Total CPU*heures</td><td>{total_cpu_hours:.2f}</td></tr>
+            <tr><td>Moyenne CPU*heures par jour</td><td>{avg_cpu_hours_per_day:.2f}</td></tr>
+            <tr><td>Total Mémoire GB*heures</td><td>{total_mem_gb_hours:.2f}</td></tr>
+            <tr><td>Temps d'attente moyen</td><td>{format_duration(avg_wait_time)}</td></tr>
+        </table>
+    </div>
 
-#     <div class="summary">
-#         <h3>Calendrier d'utilisation de la mémoire (GB*heures)</h3>
-#         <div class="calendar">
-#             {calendar_html}
-#         </div>
-#     </div>
+    <div class="summary">
+        <h3>Calendrier d'utilisation de la mémoire (GB*heures)</h3>
+        <div class="calendar">
+            {calendar_html}
+        </div>
+    </div>
 
-#     <div class="summary">
-#         <h3>Détail par jour</h3>
-#         <table>
-#             <tr>
-#                 <th>Date</th>
-#                 <th>Jobs</th>
-#                 <th>CPU*heures</th>
-#                 <th>Mémoire GB*heures</th>
-#             </tr>
-#             {"".join(f'<tr><td>{r["date"]}</td><td>{r["job_count"]}</td><td>{r["total_cpu_hours"]:.2f}</td><td>{r["total_memory_gb_hours"]:.2f}</td></tr>' for r in reports)}
-#         </table>
-#     </div>
+    <div class="summary">
+        <h3>Détail par jour</h3>
+        <table>
+            <tr>
+                <th>Date</th>
+                <th>Jobs</th>
+                <th>CPU*heures</th>
+                <th>Mémoire GB*heures</th>
+            </tr>
+            {"".join(f'<tr><td>{r["date"]}</td><td>{r["job_count"]}</td><td>{r["total_cpu_hours"]:.2f}</td><td>{r["total_memory_gb_hours"]:.2f}</td></tr>' for r in reports)}
+        </table>
+    </div>
 
-#     <footer>
-#         <p><em>Rapport généré automatiquement le {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</em></p>
-#     </footer>
-# </body>
-# </html>
-# """
+    <footer>
+        <p><em>Rapport généré automatiquement le {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</em></p>
+    </footer>
+</body>
+</html>
+"""
 
-#     with open(output, "w") as f:
-#         f.write(html)
+    with open(output, "w") as f:
+        f.write(html)
 
-#     print(f"Rapport agrégé généré dans {output}", file=sys.stderr)
+    print(f"Rapport agrégé généré dans {output}", file=sys.stderr)
 
 
 def build_parser() -> argparse.ArgumentParser:

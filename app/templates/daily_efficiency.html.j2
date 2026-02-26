@@ -4,18 +4,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rapport d'efficacité du cluster - {date}</title>
+    <title>Rapport d'efficacité du cluster - {{ date }}</title>
     <style>
         body {
             font-family: Arial, sans-serif;
-            max-width: 800px;
+            max-width: 900px;
             margin: 0 auto;
             padding: 20px;
             background-color: #f5f5f5;
         }
 
         h1,
-        h2 {
+        h2,
+        h3 {
             color: #333;
         }
 
@@ -50,12 +51,32 @@
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
             margin-bottom: 20px;
         }
+
+        .metric-value {
+            font-weight: bold;
+        }
+
+        .percentage {
+            color: #2196F3;
+        }
+
+        .time-value {
+            color: #FF9800;
+        }
+
+        footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            color: #666;
+            font-size: 0.9em;
+        }
     </style>
 </head>
 
 <body>
     <h1>Rapport d'efficacité du cluster</h1>
-    <h2>Date: {{date}}</h2>
+    <h2>Date: {{ date }}</h2>
 
     <div class="summary">
         <h3>Statistiques globales</h3>
@@ -64,29 +85,102 @@
                 <th>Métrique</th>
                 <th>Valeur</th>
             </tr>
-            {{ global_stats_rows | safe }}
+            <tr>
+                <td>Total CPU (heures)</td>
+                <td class="metric-value">{{ "%.2f"|format(global_metrics.get("CPU.Heures", 0) or 0) }} h</td>
+            </tr>
+            <tr>
+                <td>Pourcentage d'utilisation CPU</td>
+                <td class="metric-value percentage">{{ "%.2f"|format(global_metrics.get("Pourcentage d'utilisation CPU",
+                    0) or 0) }} %</td>
+            </tr>
+            <tr>
+                <td>Taux d'occupation de la RAM</td>
+                <td class="metric-value percentage">{{ "%.2f"|format(global_metrics.get("Taux d'occupation de la RAM",
+                    0) or 0) }} %</td>
+            </tr>
+            <tr>
+                <td>Utilisation mémoire (GB.secondes)</td>
+                <td class="metric-value">{{ "%.2f"|format(global_metrics.get("GB.Secondes", 0) or 0) }}</td>
+            </tr>
+            <tr>
+                <td>Temps d'attente moyen en queue</td>
+                <td class="metric-value time-value">{{ global_metrics.get("Temps d'attente moyen en queue (secondes)",
+                    0)|format_duration }}</td>
+            </tr>
+            <tr>
+                <td>Temps d'attente médian en queue</td>
+                <td class="metric-value time-value">{{ global_metrics.get("Temps d'attente médian en queue (secondes)",
+                    0)|format_duration }}</td>
+            </tr>
+            <tr>
+                <td>Temps d'attente minimum en queue</td>
+                <td class="metric-value time-value">{{ global_metrics.get("Temps d'attente minimum en queue (secondes)",
+                    0)|format_duration }}</td>
+            </tr>
+            <tr>
+                <td>Temps d'attente maximum en queue</td>
+                <td class="metric-value time-value">{{ global_metrics.get("Temps d'attente maximum en queue (secondes)",
+                    0)|format_duration }}</td>
+            </tr>
         </table>
     </div>
 
-    {% if qos_rows %}
+    {% if qos_metrics %}
     <div class="summary">
-        <h3>Temps d'attente par QOS</h3>
+        <h3>Détails par QOS</h3>
+        {% for qos_name, qos_data in qos_metrics.items() %}
+        <h4>QOS: {{ qos_name }}</h4>
         <table>
             <tr>
-                <th>QOS</th>
-                <th>Nombre de jobs</th>
-                <th>Min</th>
-                <th>Max</th>
-                <th>Moyen</th>
-                <th>Médian</th>
+                <th>Métrique</th>
+                <th>Valeur</th>
             </tr>
-            {{ qos_rows | safe }}
+            <tr>
+                <td>CPU (heures)</td>
+                <td class="metric-value">{{ "%.2f"|format(qos_data.get("CPU.Heures", 0) or 0) }} h</td>
+            </tr>
+            <tr>
+                <td>Pourcentage d'utilisation CPU</td>
+                <td class="metric-value percentage">{{ "%.2f"|format(qos_data.get("Pourcentage d'utilisation CPU", 0) or
+                    0) }} %</td>
+            </tr>
+            <tr>
+                <td>Utilisation mémoire (GB.secondes)</td>
+                <td class="metric-value">{{ "%.2f"|format(qos_data.get("GB.Secondes", 0) or 0) }}</td>
+            </tr>
+            <tr>
+                <td>Taux d'occupation de la RAM</td>
+                <td class="metric-value percentage">{{ "%.2f"|format(qos_data.get("Taux d'occupation de la RAM", 0) or
+                    0) }} %</td>
+            </tr>
+            <tr>
+                <td>Temps d'attente moyen en queue</td>
+                <td class="metric-value time-value">{{ qos_data.get("Temps d'attente moyen en queue (secondes)",
+                    0)|format_duration }}</td>
+            </tr>
+            <tr>
+                <td>Temps d'attente médian en queue</td>
+                <td class="metric-value time-value">{{ qos_data.get("Temps d'attente médian en queue (secondes)",
+                    0)|format_duration }}</td>
+            </tr>
+            <tr>
+                <td>Temps d'attente minimum en queue</td>
+                <td class="metric-value time-value">{{ qos_data.get("Temps d'attente minimum en queue (secondes)",
+                    0)|format_duration }}</td>
+            </tr>
+            <tr>
+                <td>Temps d'attente maximum en queue</td>
+                <td class="metric-value time-value">{{ qos_data.get("Temps d'attente maximum en queue (secondes)",
+                    0)|format_duration }}</td>
+            </tr>
         </table>
+        {% endfor %}
     </div>
     {% endif %}
 
     <footer>
-        <p><em>Rapport généré automatiquement le {{ datetime.now().strftime('%Y-%m-%d %H:%M:%S') }}</em></p>
+        <p><em>Rapport généré automatiquement le {{ generation_time }}</em></p>
     </footer>
 </body>
 

@@ -229,9 +229,10 @@ COLOR_MAPS = {"default": DEFAULT_CMAP}
 def add_wait_time_cols(lf: pl.LazyFrame) -> pl.LazyFrame:
     # Ajoute une colonne wait_dt qui est un time delta représentant le temps d'attente entre soumission d'un job et son démarrage
     return lf.with_columns(
-        (pl.col("Start").str.to_datetime() - pl.col("Submit").str.to_datetime()).alias(
-            "wait_dt"
-        )
+        (
+            pl.col("Start").str.to_datetime(strict=False)
+            - pl.col("Submit").str.to_datetime(strict=False)
+        ).alias("wait_dt")
     ).with_columns(
         pl.col("wait_dt").dt.total_seconds().alias("wait_time_seconds"),
         pl.col("wait_dt").dt.total_hours(fractional=True).alias("wait_time_hours"),
@@ -271,8 +272,8 @@ def add_daily_duration(lazyframe: pl.LazyFrame, date: str) -> pl.LazyFrame:
 
     # Expressions Polars pour calculer la durée quotidienne
     # Convertir Start et End en datetime
-    start_dt = pl.col("Start").str.to_datetime()
-    end_dt = pl.col("End").str.to_datetime()
+    start_dt = pl.col("Start").str.to_datetime(strict=False)
+    end_dt = pl.col("End").str.to_datetime(strict=False)
 
     # Créer les constantes pour les comparaisons
     day_start_dt = pl.lit(day_start)
@@ -318,4 +319,4 @@ def add_daily_duration(lazyframe: pl.LazyFrame, date: str) -> pl.LazyFrame:
 
     date_col = pl.lit(date).str.to_date("%Y-%m-%d") if isinstance(date, str) else date
 
-    return lazyframe.with_columns(daily_duration, date_col)
+    return lazyframe.with_columns(daily_duration, date_col.alias("date"))

@@ -93,6 +93,15 @@
     </div>
     {% endfor %}
 
+    {% for plot in line_plots %}
+    <div class="summary">
+        <h3>{{ plot.title }}</h3>
+        <div class="calendar-container">
+            {{ plot.html | safe }}
+        </div>
+    </div>
+    {% endfor %}
+
     <footer>
         <p><em>Rapport généré automatiquement le {{ generation_time }}</em></p>
     </footer>

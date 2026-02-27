@@ -26,6 +26,8 @@ from typing import Any
 import jinja2 as j2
 import polars as pl
 
+import plotly.express as px
+
 from utils import add_daily_duration, add_wait_time_cols, add_job_duration_cols
 from usage_report import generic_report
 
@@ -336,6 +338,7 @@ def generate_aggregate_report(
 
     # Générer un calendrier pour chaque métrique
     calendars = []
+    line_plots = []
     for metric_conf in metrics_config:
         metric_key = metric_conf["key"]
         metric_title = metric_conf["title"]
@@ -376,6 +379,20 @@ def generate_aggregate_report(
             }
         )
 
+        line_plot = px.line(
+            df_calendar,
+            x="Dates",
+            y="Values",
+            title="",
+            labels={"Values": ""},
+        )
+        line_plots.append(
+            {
+                "title": metric_title,
+                "html": line_plot.to_html(),
+            }
+        )
+
     # Charger et rendre le template Jinja2
     env = j2.Environment(
         loader=j2.FileSystemLoader(os.path.join(os.path.dirname(__file__), "templates"))
@@ -385,8 +402,9 @@ def generate_aggregate_report(
     html = template.render(
         from_date=from_date,
         to_date=to_date,
-        num_days=len(reports_data),
+        num_days=len(list(filter(None, reports_data))),
         calendars=calendars,
+        line_plots=line_plots,
         generation_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     )
 

@@ -1,0 +1,168 @@
+{#
+Macros pour l'affichage de graphiques dans les rapports agrégés.
+
+Ces macros permettent de généraliser l'affichage de différents types
+de représentations graphiques (calendriers, lignes, etc.)
+#}
+
+{#
+Macro pour afficher un graphique de type calendrier
+
+Args:
+metric: dict avec les clés title, calendar_html, min_value, max_value
+#}
+{% macro render_calendar(metric) %}
+<div class="chart-container" data-chart-type="calendar" data-metric="{{ metric.title }}">
+    <h3>{{ metric.title }}</h3>
+    <div class="calendar-container">
+        {{ metric.calendar_html | safe }}
+    </div>
+    <div class="legend">
+        <span class="legend-label">{{ metric.min_value | round(2) }}%</span>
+        <div class="legend-gradient"></div>
+        <span class="legend-label">{{ metric.max_value | round(2) }}%</span>
+    </div>
+</div>
+{% endmacro %}
+
+{#
+Macro pour afficher un graphique de type ligne (Plotly)
+
+Args:
+plot: dict avec les clés title, html
+#}
+{% macro render_line_plot(plot) %}
+<div class="chart-container" data-chart-type="line" data-metric="{{ plot.title }}">
+    <h3>{{ plot.title }}</h3>
+    <div class="plot-container">
+        {{ plot.html | safe }}
+    </div>
+</div>
+{% endmacro %}
+
+{#
+Macro pour afficher un sélecteur de type de graphique et de métrique
+
+Args:
+chart_types: liste de tuples (id, label) pour les types de graphiques
+metrics: liste de tuples (id, label) pour les métriques disponibles
+#}
+{% macro render_chart_selector(chart_types, metrics) %}
+<div class="chart-selector">
+    <div class="selector-group">
+        <label for="chart-type-select">Type de graphique :</label>
+        <select id="chart-type-select" onchange="updateChartVisibility()">
+            <option value="all">Tous</option>
+            {% for chart_type in chart_types %}
+            <option value="{{ chart_type.id }}">{{ chart_type.label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="selector-group">
+        <label for="metric-select">Métrique :</label>
+        <select id="metric-select" onchange="updateChartVisibility()">
+            <option value="all">Toutes</option>
+            {% for metric in metrics %}
+            <option value="{{ metric.id }}">{{ metric.label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+</div>
+{% endmacro %}
+
+{#
+Macro pour le script JavaScript de filtrage des graphiques
+#}
+{% macro render_chart_filter_script() %}
+<script>
+    function updateChartVisibility() {
+        const chartTypeSelect = document.getElementById('chart-type-select');
+        const metricSelect = document.getElementById('metric-select');
+
+        const selectedChartType = chartTypeSelect.value;
+        const selectedMetric = metricSelect.value;
+
+        const allCharts = document.querySelectorAll('.chart-container');
+
+        allCharts.forEach(chart => {
+            const chartType = chart.getAttribute('data-chart-type');
+            const metric = chart.getAttribute('data-metric');
+
+            const matchesType = selectedChartType === 'all' || chartType === selectedChartType;
+            const matchesMetric = selectedMetric === 'all' || metric === selectedMetric;
+
+            if (matchesType && matchesMetric) {
+                chart.style.display = 'block';
+            } else {
+                chart.style.display = 'none';
+            }
+        });
+    }
+
+    // Initialiser l'affichage au chargement de la page
+    document.addEventListener('DOMContentLoaded', updateChartVisibility);
+</script>
+{% endmacro %}
+
+{#
+Macro pour les styles CSS du sélecteur
+#}
+{% macro render_chart_selector_styles() %}
+<style>
+    .chart-selector {
+        display: flex;
+        gap: 20px;
+        align-items: center;
+        background-color: white;
+        padding: 15px 20px;
+        border-radius: 5px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+    }
+
+    .selector-group {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .selector-group label {
+        font-weight: bold;
+        color: #333;
+    }
+
+    .selector-group select {
+        padding: 8px 12px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        background-color: white;
+        font-size: 14px;
+        cursor: pointer;
+        min-width: 200px;
+    }
+
+    .selector-group select:hover {
+        border-color: #999;
+    }
+
+    .selector-group select:focus {
+        outline: none;
+        border-color: #007bff;
+        box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+    }
+
+    .chart-container {
+        background-color: white;
+        padding: 20px;
+        border-radius: 5px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        margin-bottom: 20px;
+    }
+
+    .plot-container {
+        text-align: center;
+        margin: 20px 0;
+    }
+</style>
+{% endmacro %}

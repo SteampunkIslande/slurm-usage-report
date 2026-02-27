@@ -1,3 +1,5 @@
+{% from "macros/charts.html.j2" import render_calendar, render_line_plot, render_chart_selector,
+render_chart_filter_script, render_chart_selector_styles %}
 <!DOCTYPE html>
 <html lang="fr">
 
@@ -69,6 +71,7 @@
             color: #666;
         }
     </style>
+    {{ render_chart_selector_styles() }}
 </head>
 
 <body>
@@ -79,32 +82,36 @@
         <p><strong>Nombre de jours avec données:</strong> {{ num_days }}</p>
     </div>
 
+    {# Définir les types de graphiques et métriques disponibles #}
+    {% set chart_types = [
+    {"id": "calendar", "label": "Calendrier"},
+    {"id": "line", "label": "Courbe"}
+    ] %}
+
+    {# Extraire les métriques uniques depuis les calendriers #}
+    {% set metrics = [] %}
     {% for metric in calendars %}
-    <div class="summary">
-        <h3>{{ metric.title }}</h3>
-        <div class="calendar-container">
-            {{ metric.calendar_html | safe }}
-        </div>
-        <div class="legend">
-            <span class="legend-label">{{ metric.min_value | round(2) }}%</span>
-            <div class="legend-gradient"></div>
-            <span class="legend-label">{{ metric.max_value | round(2) }}%</span>
-        </div>
-    </div>
+    {% set _ = metrics.append({"id": metric.title, "label": metric.title}) %}
     {% endfor %}
 
+    {# Afficher le sélecteur de graphiques #}
+    {{ render_chart_selector(chart_types, metrics) }}
+
+    {# Afficher tous les calendriers #}
+    {% for metric in calendars %}
+    {{ render_calendar(metric) }}
+    {% endfor %}
+
+    {# Afficher tous les line plots #}
     {% for plot in line_plots %}
-    <div class="summary">
-        <h3>{{ plot.title }}</h3>
-        <div class="calendar-container">
-            {{ plot.html | safe }}
-        </div>
-    </div>
+    {{ render_line_plot(plot) }}
     {% endfor %}
 
     <footer>
         <p><em>Rapport généré automatiquement le {{ generation_time }}</em></p>
     </footer>
+
+    {{ render_chart_filter_script() }}
 </body>
 
 </html>

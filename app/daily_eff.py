@@ -85,21 +85,21 @@ def compute_daily_metrics(
         .alias("Temps d'attente maximum en queue (secondes)"),
         pl.col("JobID")
         .filter(
-            pl.col("Submit").str.to_datetime("%Y-%m-%dT%H:%M:%S").dt.date()
+            pl.col("Submit").str.to_datetime(strict=False).dt.date()
             == pl.lit(date).str.to_date()
         )
         .count()
         .alias("Jobs soumis"),
         pl.col("JobID")
         .filter(
-            pl.col("Start").str.to_datetime("%Y-%m-%dT%H:%M:%S").dt.date()
+            pl.col("Start").str.to_datetime(strict=False).dt.date()
             == pl.lit(date).str.to_date()
         )
         .count()
         .alias("Jobs démarrés"),
         pl.col("JobID")
         .filter(
-            pl.col("Start").str.to_datetime("%Y-%m-%dT%H:%M:%S").dt.date()
+            pl.col("Start").str.to_datetime(strict=False).dt.date()
             == pl.lit(date).str.to_date()
         )
         .count()

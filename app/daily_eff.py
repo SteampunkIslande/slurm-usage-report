@@ -22,7 +22,6 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
-from plotjs import PlotJS
 
 import jinja2 as j2
 import polars as pl
@@ -324,11 +323,9 @@ def generate_aggregate_report(
                     dates.append(date_str)
                     reports_data.append(data["global"])
                 else:
-                    print(f"Rapport global manquant dans {json_file}", file=sys.stderr)
                     dates.append(date_str)
                     reports_data.append({})  # Valeurs vides pour les jours sans données
         else:
-            print(f"Fichier JSON manquant: {json_file}", file=sys.stderr)
             dates.append(date_str)
             reports_data.append({})  # Valeurs vides pour les jours sans données
         current += timedelta(days=1)
@@ -363,30 +360,13 @@ def generate_aggregate_report(
             ax=ax,
         )
 
-        if no_js:
-            # Convertir en base64 (pour avoir une image statique, compatible avec les clients mail)
-            s = io.BytesIO()
-            fig.savefig(s, format="png", bbox_inches="tight")
-            plt.close(fig)
-            s.seek(0)
-            img_base64 = base64.b64encode(s.getvalue()).decode("utf-8")
-            calendar_html = f'<img src="data:image/png;base64,{img_base64}" />'
-        else:
-            PlotJS._favicon_path = ""
-            PlotJS._document_title = ""
-            calendar_html = (
-                PlotJS(fig)
-                .add_tooltip(
-                    labels=df_calendar.with_columns(
-                        pl.concat_str(
-                            df_calendar["Values"].round(2).cast(pl.String), pl.lit(" %")
-                        )
-                    )["Values"],
-                    hover_nearest=True,
-                )
-                .as_html()
-            )
-
+        # Convertir en base64 (pour avoir une image statique, compatible avec les clients mail)
+        s = io.BytesIO()
+        fig.savefig(s, format="png", bbox_inches="tight")
+        plt.close(fig)
+        s.seek(0)
+        img_base64 = base64.b64encode(s.getvalue()).decode("utf-8")
+        calendar_html = f'<img src="data:image/png;base64,{img_base64}" />'
         calendars.append(
             {
                 "title": metric_title,

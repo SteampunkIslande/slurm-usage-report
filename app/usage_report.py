@@ -1,22 +1,17 @@
 #!/usr/bin/env python
 # PYTHON_ARGCOMPLETE_OK
-import polars as pl
+import argparse
 import os
-from pathlib import Path
 import sys
-import argparse, argcomplete
-from snakemake_rules_plot import plot_snakemake_rule_efficicency
-
-import duckdb as db
-
-from utils import (
-    INTERESTING_COLUMNS,
-    USEFUL_COLUMNS,
-    DEFAULT_CMAP,
-)
-
-import jinja2 as j2
 from functools import partial
+from pathlib import Path
+
+import argcomplete
+import duckdb as db
+import jinja2 as j2
+import polars as pl
+from snakemake_rules_plot import plot_snakemake_rule_efficicency
+from utils import DEFAULT_CMAP, INTERESTING_COLUMNS, USEFUL_COLUMNS
 
 
 # Première étape: rendre le fichier d'accounting sain
@@ -458,9 +453,9 @@ def add_metrics_relative_to_input_size(
         f"""SELECT *,((run_metrics.ElapsedRaw/60)/(insizes.input_size_bytes/pow(2,20))) AS MinPerMo,"""
         """((run_metrics.ReqMem/pow(2,20))/(insizes.input_size_bytes/pow(2,20))) AS UsedRAMPerMo """
         f"""FROM read_parquet('{intermediate_parquet}') run_metrics """
-        f"""LEFT JOIN read_csv('{input_sizes}') insizes """
+        f"""LEFT JOIN read_csv('{input_sizes}',delim='|') insizes """
         """ON insizes.slurm_jobid = run_metrics.JobID AND insizes.input_size_bytes != 0"""
-        f""") TO {augmented_parquet}"""
+        f""") TO '{augmented_parquet}'"""
     )
 
 
@@ -469,7 +464,7 @@ def get_color(
     column_name: str,
     col_name_to_colmap: dict,
 ):
-    if column_name not in col_name_to_colmap:
+    if column_name not in col_name_to_colmap or not value:
         return None
     col_map = col_name_to_colmap[column_name]
     if value < col_map[0][0][0]:

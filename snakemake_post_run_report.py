@@ -42,22 +42,32 @@ if __name__ == "__main__":
         help="Chemin vers la base de données SACCT maison du cluster (dossier avec les fichiers parquet).\n"
         "Permet de contourner sacct en cherchant directement les données dans les fichiers parquet",
     )
+    parser.add_argument(
+        "--singularity-image",
+        help="Chemin absolu vers l'image singularity à utiliser pour exécuter l'application",
+        default="/SINGULARITIES/slurm-usage-report-1.0.0.sif",
+    )
     args = parser.parse_args()
 
     log_paths = [Path(p).resolve().absolute() for p in args.log_paths]
-    output_path = Path(args.output).resolve().absolute()
+    output_parquet = Path(args.output).resolve().absolute()
+
+    output_html = output_parquet.with_suffix(".html")
+    output_input_sizes = output_parquet.with_suffix(".input-sizes.csv")
+
+    singularity_image = args.singularity_image
 
     # 0: Obtenir le SLURM job id depuis le log de snakemake (il y a une ligne dédiée pour ça)
     slurm_job_names = subprocess.check_output(
         [
             "singularity",
             "exec",
-            "/SINGULARITIES/slurm-usage-report-1.0.0.sif",
+            singularity_image,
             "/app/extract_snakemake_logs.py",
             "-i",
             *log_paths,
             "-o",
-            output_path.with_suffix(
+            output_parquet.with_suffix(
                 ".input-sizes.csv"
             ),  # Permet ensuite de rapporter les métriques de run à la taille des fichiers
         ],
@@ -65,11 +75,13 @@ if __name__ == "__main__":
     ).splitlines()
 
     if not args.database:
+        output_csv = output_parquet.with_suffix(".csv")
+        output_raw_parquet = output_parquet.with_suffix(".raw.parquet")
         try:
             # Etapes 1 et 2: obtenir le rapport SACCT au format parquet
             # 1: Obtenir le rapport sacct pour le job_id
             with open(
-                output_path.with_suffix(".csv"),
+                output_csv,
                 "w",
             ) as report_file:
                 subprocess.run(
@@ -88,20 +100,20 @@ if __name__ == "__main__":
                     text=True,
                     check=True,
                 )
-            # 2: convertir les CSV en parquet (plus rapide pour les requêtes)
+            # 2: convertir les CSV en parquet (plus rapide pour les requêtes). Le schéma de celui-ci est dit 'raw' (vient directement de sacct)
             subprocess.run(
                 [
                     "singularity",
                     "exec",
                     "-B",
                     "/tmp",
-                    "/SINGULARITIES/slurm-usage-report-1.0.0.sif",
+                    singularity_image,
                     "/app/usage_report.py",
                     "csv_to_parquet",
                     "-i",
-                    output_path.with_suffix(".csv"),
+                    output_csv,
                     "-o",
-                    output_path,
+                    output_raw_parquet,
                 ],
                 text=True,
                 check=True,
@@ -113,48 +125,48 @@ if __name__ == "__main__":
                     "exec",
                     "-B",
                     "/tmp",
-                    "/SINGULARITIES/slurm-usage-report-1.0.0.sif",
+                    singularity_image,
                     "/app/usage_report.py",
                     "snakemake_efficiency",
                     "-i",
-                    output_path,
+                    output_raw_parquet,
                     "-o",
-                    output_path.with_suffix(".html"),
+                    output_html,
                     "-s",
-                    output_path.with_suffix(".input-sizes.csv"),
+                    output_input_sizes,
                     "--output-parquet",
-                    output_path,
+                    output_parquet,
                 ],
                 text=True,
                 check=True,
             )
-
-            if output_path.with_suffix(".csv").is_file():
-                output_path.with_suffix(".csv").unlink()
+            if output_raw_parquet.exists():
+                output_raw_parquet.unlink()
+            if output_csv.exists():
+                output_csv.unlink()
 
         except subprocess.CalledProcessError as e:
-            print(f"Error calling sacct: {e}")
+            print(f"Une erreur est survenue: {e}")
     else:
         database = Path(args.database)
+        # Etape 3: A partir du fichier parquet obtenu aux étapes précédentes, obtenir le rapport d'efficacité snakemake
         subprocess.run(
             [
                 "singularity",
                 "exec",
                 "-B",
                 "/tmp",
-                "/SINGULARITIES/slurm-usage-report-1.0.0.sif",
+                singularity_image,
                 "/app/usage_report.py",
                 "snakemake_efficiency",
-                "-i",
-                output_path,
                 "-d",
                 database,
-                "-n",
-                *slurm_job_names,
                 "-o",
-                output_path.with_suffix(".html"),
+                output_html,
                 "-s",
-                output_path.with_suffix(".input-sizes.csv"),
+                output_input_sizes,
+                "--output-parquet",
+                output_parquet,
             ],
             text=True,
             check=True,

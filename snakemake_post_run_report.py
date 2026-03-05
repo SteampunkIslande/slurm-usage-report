@@ -159,7 +159,7 @@ if __name__ == "__main__":
                 singularity_image,
                 "/app/usage_report.py",
                 "snakemake_efficiency",
-                "-d",
+                "-i",
                 database,
                 "-o",
                 output_html,

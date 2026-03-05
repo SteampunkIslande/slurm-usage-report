@@ -472,69 +472,37 @@ def get_color(
 
 
 def generate_snakemake_efficiency_report(
-    input_parquet: Path,
     output_html: Path,
-    input_sizes_csv: Path = None,
-    job_names: list[str] = None,
-    database: Path = None,
+    input_parquets: list[str],
+    job_names: list[str],
     output_parquet: Path = None,
+    input_sizes_csv: Path = None,
 ):
 
-    if database and input_parquet.exists():
-        print(
-            "Vous avez spécifié une base de données SACCT maison, mais aussi un fichier d'entrée existant.\n"
-            "Celui-ci ne doit pas exister, car il servira de représentation intermédiaire des données extraites\n"
-            "de la base de données SACCT.\n"
-            "Veuillez supprimer le fichier d'entrée ou choisir un chemin d'entrée différent."
-        )
-        sys.exit(1)
-    if database and not job_names:
-        print(
-            "Vous avez spécifié une base de données, mais aucun nom de job SLURM/snakemake.\n"
-            "Impossible d'éditer un rapport d'efficacité aussi large!"
-        )
-        sys.exit(1)
+    lf = pl.scan_parquet(input_parquets)
 
-    # Extraire les jobs en amont
-    if database:
-        try:
-            db.sql(
-                """COPY (SELECT * FROM read_parquet('{}/*.parquet') WHERE JobName IN ({})) TO '{}'""".format(
-                    database, ",".join(f"'{j}'" for j in job_names), input_parquet
-                )
-            )
-        except Exception as e:
-            print(f"Erreur lors de l'enregistrement de {str(input_parquet)}: {e}")
-            sys.exit(1)
-
-    lf = pl.scan_parquet(input_parquet)
+    lf = lf.filter(pl.col("JobName").str.contains_any(job_names))
     lf = generic_report(lf)
     lf = add_snakerule_col(lf)
-
-    # Si database est défini, c'est un no-op mais polars ne le sait pas (puisqu'on est passé par duckdb)
-    if job_names and not database:
-        lf = lf.filter(pl.col("JobName").str.contains_any(job_names))
 
     # Filtrer pour obtenir seulement les données avec des noms de règles
     lf = lf.filter(pl.col("rule_name").is_not_null())
 
     if input_sizes_csv:
-        # Enregistrer le lazyframe actuel dans un fichier temporaire pour ajouter les métriques relatives à la taille des entrées
-        # en utilisant duckdb (interopérabilité)
-        intermediate_parquet = input_parquet.with_suffix(".tmp.parquet")
-        if intermediate_parquet.exists():
-            print(f"{intermediate_parquet} existe déjà !", file=sys.stderr)
-            sys.exit(1)
+        intermediate_parquet = output_parquet or output_html.with_suffix(".tmp.parquet")
         lf.sink_parquet(intermediate_parquet)
-        augmented_parquet = output_parquet or intermediate_parquet.with_suffix(
-            ".with-input-sizes.parquet"
-        )
+        augmented_parquet = intermediate_parquet.with_suffix(".with-sizes.parquet")
         add_metrics_relative_to_input_size(
             intermediate_parquet, input_sizes_csv, augmented_parquet
         )
         # Intermediate parquet ne sert plus
         intermediate_parquet.unlink()
         lf = pl.scan_parquet(augmented_parquet)
+    else:
+        if output_parquet:
+            augmented_parquet = output_parquet
+        else:
+            augmented_parquet = output_html.with_suffix(".tmp.parquet")
 
     # Réaliser ici toutes les opérations qui nécessitent le dataframe complet (relâché)
     relaxed_df = lf.collect()
@@ -731,6 +699,11 @@ def generate_snakemake_efficiency_report(
     with open(output_html, "w") as f:
         f.write(output)
 
+    if not output_parquet:
+        augmented_parquet.unlink()
+    else:
+        augmented_parquet.replace(output_parquet)
+
 
 # CLI
 def build_parser() -> argparse.ArgumentParser:
@@ -807,10 +780,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_smk.add_argument(
         "--input",
         "-i",
-        dest="input_parquet",
-        type=Path,
-        help="Chemin du fichier Parquet d'entrée",
+        dest="input_parquets",
+        nargs="+",
+        type=str,
+        help="Chemin(s) vers un ou des fichiers parquet. Wildcards autorisées (même non étendues par le shell)",
+        required=True,
     )
+
     p_smk.add_argument(
         "--output",
         "-o",
@@ -826,17 +802,10 @@ def build_parser() -> argparse.ArgumentParser:
         type=lambda s: s.split(","),
     )
     p_smk.add_argument(
-        "--database",
-        "-d",
-        help="Chemin vers la base de données SACCT maison du cluster (dossier avec les fichiers parquet).\n"
-        "Permet de contourner sacct en cherchant directement les données dans les fichiers parquet",
-        dest="database",
-        type=Path,
-    )
-    p_smk.add_argument(
         "--output-parquet",
         help="Nom du fichier parquet où sauvegarder les données de performance consolidées pour les runs snakemake spécifiés",
         type=Path,
+        required=True,
     )
     p_smk.add_argument(
         "--sizes",

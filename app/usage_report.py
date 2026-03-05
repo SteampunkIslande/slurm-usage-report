@@ -287,11 +287,6 @@ def generic_report(lf: pl.LazyFrame) -> pl.LazyFrame:
     return lf
 
 
-def debug_parquet(input_parquet: Path, output_excel: Path):
-    lf = pl.scan_parquet(input_parquet).select(INTERESTING_COLUMNS)
-    lf.collect().write_excel(output_excel)
-
-
 # Enregistre la sortie de SACCT (au format CSV) dans un format plus compact et plus rapide à requêter que CSV
 def save_to_parquet(
     input_csv: Path,
@@ -801,26 +796,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Chemin du fichier Excel de sortie",
         required=True,
         dest="output_excel",
-    )
-
-    # Simple debug: parquet to excel
-    p_debug = subparsers.add_parser(
-        "debug", help="Générer un Excel directement à partir du parquet"
-    )
-    p_debug.set_defaults(func=debug_parquet)
-    p_debug.add_argument(
-        "-i",
-        "--input",
-        dest="input_parquet",
-        type=Path,
-        help="Chemin du fichier Parquet d'entrée",
-    )
-    p_debug.add_argument(
-        "-o",
-        "--output",
-        dest="output_excel",
-        type=Path,
-        help="Chemin du fichier Excel de sortie",
     )
 
     # snakemake efficiency

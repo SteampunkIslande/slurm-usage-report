@@ -67,9 +67,7 @@ if __name__ == "__main__":
             "-i",
             *log_paths,
             "-o",
-            output_parquet.with_suffix(
-                ".input-sizes.csv"
-            ),  # Permet ensuite de rapporter les métriques de run à la taille des fichiers
+            output_input_sizes,  # Permet ensuite de rapporter les métriques de run à la taille des fichiers
         ],
         text=True,
     ).splitlines()

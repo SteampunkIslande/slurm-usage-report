@@ -295,7 +295,7 @@ def save_to_parquet(
     col_count: int = 109,
     separator: str = "|",
 ):
-    sacct_file_overwrite = input_csv.with_suffix(".csv.tmp")
+    sacct_file_overwrite = input_csv.with_suffix(".tmp.csv")
     removed_lines = sacct_sanitizer(
         input_csv, sacct_file_overwrite, col_count, separator
     )

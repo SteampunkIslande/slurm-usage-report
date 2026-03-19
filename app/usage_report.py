@@ -11,7 +11,7 @@ import duckdb as db
 import jinja2 as j2
 import polars as pl
 from snakemake_rules_plot import plot_snakemake_rule_efficicency
-from utils import DEFAULT_CMAP, INTERESTING_COLUMNS, USEFUL_COLUMNS
+from utils import DEFAULT_CMAP, USEFUL_COLUMNS
 
 
 # Première étape: rendre le fichier d'accounting sain
@@ -481,8 +481,8 @@ def generate_snakemake_efficiency_report(
 
     lf = pl.scan_parquet(input_parquets)
 
-    lf = lf.filter(pl.col("JobName").str.contains_any(job_names))
     lf = generic_report(lf)
+    lf = lf.filter(pl.col("JobName").str.contains_any(job_names))
     lf = add_snakerule_col(lf)
 
     # Filtrer pour obtenir seulement les données avec des noms de règles
